@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Intersection, Point, Player } from '../types';
 import Stone from './Stone';
@@ -12,6 +12,11 @@ interface BoardProps {
   turn: Player;
   boardPx: number;
   interactive?: boolean;
+  /** Sensei/lesson overlays */
+  targets?: Point[];
+  marks?: { x: number; y: number; c?: 'black' | 'white' }[];
+  lines?: { axis: 'row' | 'col'; index: number }[];
+  hideAtari?: boolean;
 }
 
 /**
@@ -26,6 +31,10 @@ const Board: React.FC<BoardProps> = ({
   turn,
   boardPx,
   interactive = true,
+  targets = [],
+  marks = [],
+  lines = [],
+  hideAtari = false,
 }) => {
   const size = board.length;
 
@@ -102,7 +111,7 @@ const Board: React.FC<BoardProps> = ({
               )}
             </View>,
           );
-        } else if (atariPoints.has(key)) {
+        } else if (!hideAtari && atariPoints.has(key)) {
           // Web renders a pulsing red dot on empty atari points
           const d = 10;
           els.push(
@@ -129,6 +138,91 @@ const Board: React.FC<BoardProps> = ({
     return els;
   };
 
+  const renderOverlays = () => {
+    const els: React.ReactNode[] = [];
+    // Amber pulsing tap targets
+    targets.forEach((t, i) => {
+      const cx = pointXY(t.x);
+      const cy = pointXY(t.y);
+      els.push(
+        <View key={`tg${i}`} style={{ position: 'absolute', left: cx, top: cy, width: 0, height: 0, zIndex: 25 }}>
+          <View
+            style={{
+              position: 'absolute',
+              left: -17,
+              top: -17,
+              width: 34,
+              height: 34,
+              borderRadius: 17,
+              backgroundColor: 'rgba(252,211,77,0.40)',
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              left: -7,
+              top: -7,
+              width: 14,
+              height: 14,
+              borderRadius: 7,
+              backgroundColor: '#fcd34d',
+              shadowColor: '#fcd34d',
+              shadowOpacity: 0.9,
+              shadowRadius: 8,
+            }}
+          />
+        </View>,
+      );
+    });
+    // Ghost markers (translucent dots)
+    marks.forEach((m, i) => {
+      const cx = pointXY(m.x);
+      const cy = pointXY(m.y);
+      const white = m.c === 'white';
+      els.push(
+        <View key={`mk${i}`} style={{ position: 'absolute', left: cx, top: cy, width: 0, height: 0, zIndex: 15 }}>
+          <View
+            style={{
+              position: 'absolute',
+              left: -9,
+              top: -9,
+              width: 18,
+              height: 18,
+              borderRadius: 9,
+              backgroundColor: white ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)',
+              borderWidth: 1,
+              borderColor: white ? 'rgba(255,255,255,0.40)' : 'rgba(0,0,0,0.40)',
+            }}
+          />
+        </View>,
+      );
+    });
+    // Highlighted board lines with index labels
+    lines.forEach((l, i) => {
+      const pos = pointXY(l.index);
+      if (l.axis === 'row') {
+        els.push(
+          <View key={`ln${i}`} style={{ position: 'absolute', left: pad, right: pad, top: pos, height: 0, zIndex: 5 }}>
+            <View style={{ position: 'absolute', left: 0, right: 0, top: -2, height: 4, backgroundColor: '#fcd34d' }} />
+            <View style={{ position: 'absolute', left: -22, top: -10, backgroundColor: 'rgba(0,0,0,0.60)', borderRadius: 4, paddingHorizontal: 4 }}>
+              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{l.index + 1}</Text>
+            </View>
+          </View>,
+        );
+      } else {
+        els.push(
+          <View key={`ln${i}`} style={{ position: 'absolute', top: pad, bottom: pad, left: pos, width: 0, zIndex: 5 }}>
+            <View style={{ position: 'absolute', top: 0, bottom: 0, left: -2, width: 4, backgroundColor: '#fcd34d' }} />
+            <View style={{ position: 'absolute', top: -26, left: -8, backgroundColor: 'rgba(0,0,0,0.60)', borderRadius: 4, paddingHorizontal: 4 }}>
+              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{l.index + 1}</Text>
+            </View>
+          </View>,
+        );
+      }
+    });
+    return els;
+  };
+
   return (
     <View style={[styles.shell, { width: boardPx, height: boardPx, borderRadius: 4 }]}>
       <LinearGradient
@@ -152,6 +246,7 @@ const Board: React.FC<BoardProps> = ({
           style={[styles.hoshi, { left: pointXY(p.x) - 2, top: pointXY(p.y) - 2 }]}
         />
       ))}
+      {renderOverlays()}
       {renderPoints()}
     </View>
   );

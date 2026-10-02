@@ -32,14 +32,14 @@ export const SENSEI_TOPICS = [
   { id: 'moves', title: 'Essential Moves', desc: 'Bonus: monkey jump, hane, peep, attachment' },
 ];
 
-// Beat counts mirror the web SENSEI_LESSONS (kept in sync manually).
+// Beat counts mirror the web SENSEI_LESSONS (verified against data/senseiLessons.ts).
 export const SENSEI_BEAT_COUNTS: Record<string, number> = {
-  fundamentals: 9,
-  opening: 9,
-  balances: 9,
-  strategies: 8,
-  endgame: 9,
-  moves: 9,
+  fundamentals: 36,
+  opening: 11,
+  balances: 18,
+  strategies: 11,
+  endgame: 10,
+  moves: 20,
 };
 
 const ProgressRing: React.FC<{ percent: number }> = ({ percent }) => {

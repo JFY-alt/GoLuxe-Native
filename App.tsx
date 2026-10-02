@@ -6,6 +6,7 @@ import AiSetupMenu, { AiConfig } from './screens/AiSetupMenu';
 import PassAndPlaySubMenu from './screens/PassAndPlaySubMenu';
 import WhatIsGoMenu from './screens/WhatIsGoMenu';
 import StudyMenu from './screens/StudyMenu';
+import SenseiScreen from './screens/SenseiScreen';
 import GameScreen from './screens/GameScreen';
 import { C } from './theme';
 
@@ -80,10 +81,12 @@ export default function App() {
           onBack={() => setScreen('menu')}
         />
       )}
+      {screen === 'sensei' && (
+        <SenseiScreen key={senseiTopic} topic={senseiTopic} onExit={() => setScreen('study')} />
+      )}
       {screen === 'game' && (
         <GameScreen key={gameKey} mode={mode} aiConfig={aiConfig} onExit={() => setScreen('menu')} />
       )}
-      {/* howToPlay + sensei screens land in the next increment */}
     </SafeAreaView>
   );
 }
