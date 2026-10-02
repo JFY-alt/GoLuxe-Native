@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, ZoomOut } from 'react-native-reanimated';
 import { C, SERIF } from '../theme';
 
 interface MainMenuProps {
@@ -17,15 +17,25 @@ interface MainMenuProps {
  * subtitle, ghost buttons (border-white/10, serif uppercase tracking).
  */
 const MainMenu: React.FC<MainMenuProps> = ({ onPlay, onWhatIsGo, onHowToPlay, onStudy }) => {
+  // Web: button tap → 500ms fade-out/zoom-out → navigate
+  const [isExiting, setIsExiting] = useState(false);
+  const handleNav = (fn: () => void) => {
+    if (isExiting) return;
+    setIsExiting(true);
+    setTimeout(fn, 500);
+  };
   const btns: { label: string; fn: () => void }[] = [
-    { label: 'What is Go?', fn: onWhatIsGo },
-    { label: 'How to Play', fn: onHowToPlay },
-    { label: 'Study', fn: onStudy },
-    { label: 'Play', fn: onPlay },
+    { label: 'What is Go?', fn: () => handleNav(onWhatIsGo) },
+    { label: 'How to Play', fn: () => handleNav(onHowToPlay) },
+    { label: 'Study', fn: () => handleNav(onStudy) },
+    { label: 'Play', fn: () => handleNav(onPlay) },
   ];
 
   return (
-    <View style={styles.root}>
+    <Animated.View
+      style={styles.root}
+      exiting={FadeOut.duration(500)}
+    >
       <StatusBar barStyle="light-content" />
       {/* deep dark backdrop with a faint amber wash from the top, like the web menus */}
       <LinearGradient
@@ -65,7 +75,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onPlay, onWhatIsGo, onHowToPlay, on
           ))}
         </View>
       </View>
-    </View>
+    </Animated.View>
   );
 };
 

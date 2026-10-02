@@ -127,7 +127,6 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
-        onTouchStart={(e) => e.stopPropagation()}
       >
         <View style={styles.nav}>
           {/* Learn */}
