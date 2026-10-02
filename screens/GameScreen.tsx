@@ -27,12 +27,12 @@ import { clockAfterMove, clockDisplay, createClock, tickClock } from '../logic/c
 import { PlayerClock, TimeSettings } from '../types';
 import { C, SERIF } from '../theme';
 
-const BOARD_N = 9;
 const KOMI = 7.5;
 const AI_DELAY_MS = 750;
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const BOARD_PX = Math.min(SW * 0.9, SH * 0.52, 400);
+const BOARD_SIZES = [9, 13, 19];
 
 interface Snapshot {
   board: Intersection[][];
@@ -55,10 +55,13 @@ interface GameScreenProps {
  * espresso board, notice line, Undo/Pass/Resign/Refresh action row.
  */
 const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, onExit }) => {
-  const [board, setBoard] = useState<Intersection[][]>(() => createEmptyBoard(BOARD_N));
+  const [boardSize, setBoardSize] = useState(9);
+  const [ruleset, setRuleset] = useState<'japanese' | 'chinese'>('japanese');
+  const [sizeArmed, setSizeArmed] = useState<number | null>(null);
+  const [board, setBoard] = useState<Intersection[][]>(() => createEmptyBoard(9));
   const [turn, setTurn] = useState<Player>('black');
   const [captures, setCaptures] = useState({ black: 0, white: 0 });
-  const [history, setHistory] = useState<string[]>(() => [getBoardString(createEmptyBoard(BOARD_N))]);
+  const [history, setHistory] = useState<string[]>(() => [getBoardString(createEmptyBoard(boardSize))]);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [lastMove, setLastMove] = useState<Point | null>(null);
   const [passes, setPasses] = useState(0);
@@ -210,7 +213,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
   };
 
   const finalizeScore = () => {
-    const sc = calculateScores(board, captures, KOMI, 0, deadStones, 'japanese', new Set(), true, 0, 0, true);
+    const sc = calculateScores(board, captures, KOMI, 0, deadStones, ruleset, new Set(), true, 0, 0, true);
     setFinalScore({ black: sc.black.total, white: sc.white.total });
     setWinner(sc.black.total > sc.white.total ? 'black' : sc.white.total > sc.black.total ? 'white' : 'draw');
     setPhase('ended');
@@ -274,8 +277,41 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
     setResignArmed(false);
   };
 
+  const onSizeTabPress = (size: number) => {
+    if (size === boardSize) return;
+    if (sizeArmed !== size) {
+      setSizeArmed(size);
+      showNotice(`Tap ${size}×${size} again to start a new ${size}×${size} game`);
+      return;
+    }
+    setSizeArmed(null);
+    const b = createEmptyBoard(size);
+    setBoardSize(size);
+    setBoard(b);
+    setTurn('black');
+    setCaptures({ black: 0, white: 0 });
+    setHistory([getBoardString(b)]);
+    setSnapshots([]);
+    setLastMove(null);
+    setPasses(0);
+    setPhase('play');
+    setWinner(null);
+    setFinalScore(null);
+    setDeadStones(new Set());
+    setShowResults(false);
+    setNotice(null);
+    setPassNotice(null);
+    setAiThinking(false);
+    setResignArmed(false);
+  };
+
+  const toggleRuleset = () => {
+    setRuleset((r) => (r === 'japanese' ? 'chinese' : 'japanese'));
+    showNotice(`Ruleset: ${ruleset === 'japanese' ? 'Chinese' : 'Japanese'}`);
+  };
+
   const onRefreshPress = () => {
-    const b = createEmptyBoard(BOARD_N);
+    const b = createEmptyBoard(boardSize);
     const mainMs = (timeSettings?.mainTimeMinutes || 30) * 60000;
     setBoard(b);
     setTurn('black');
@@ -318,7 +354,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
         deadStones: new Set<string>(),
         sekiPoints: new Set<string>(),
         reviewedPoints: new Set<string>(),
-        ruleset: 'japanese',
+        ruleset,
       };
       let move: Point | 'pass' | 'resign';
       try {
@@ -344,7 +380,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
 
   const scoreDetail = useMemo(() => {
     const includeTerritory = phase !== 'play';
-    return calculateScores(board, captures, KOMI, 0, deadStones, 'japanese', new Set(), true, 0, 0, includeTerritory);
+    return calculateScores(board, captures, KOMI, 0, deadStones, ruleset, new Set(), true, 0, 0, includeTerritory);
   }, [board, captures, deadStones, phase]);
   const scores = useMemo(
     () => ({ black: scoreDetail.black.total, white: scoreDetail.white.total }),
@@ -395,7 +431,21 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
             {mode === 'ai' && aiConfig ? `Vs AI (${aiConfig.difficulty})` : 'Strategic Purity'}
           </Text>
           <Text style={styles.subDot}>•</Text>
-          <Text style={[styles.subText, styles.rulesText]}>Japanese Rules</Text>
+          <Pressable onPress={toggleRuleset}>
+            <Text style={[styles.subText, styles.rulesText]}>{ruleset === 'japanese' ? 'Japanese' : 'Chinese'} Rules</Text>
+          </Pressable>
+        </View>
+
+        {/* Board size tabs */}
+        <View style={styles.sizeRow}>
+          {BOARD_SIZES.map((s) => (
+            <Pressable key={s} onPress={() => onSizeTabPress(s)} style={styles.sizeTab}>
+              <Text style={[styles.sizeText, boardSize === s && styles.sizeTextActive]}>
+                {s}×{s}
+              </Text>
+              {boardSize === s && <View style={styles.sizeUnderline} />}
+            </Pressable>
+          ))}
         </View>
 
         {/* Score strip */}
@@ -493,7 +543,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
             <Text style={styles.modalTitle}>
               {winner === 'draw' ? 'Draw' : 'Match Conclusion'}
             </Text>
-            <Text style={styles.modalRules}>japanese rules</Text>
+            <Text style={styles.modalRules}>{ruleset} rules</Text>
             <View style={styles.resultRow}>
               {(['black', 'white'] as const).map((color) => {
                 const d = color === 'black' ? scoreDetail.black : scoreDetail.white;
@@ -512,8 +562,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
                       <Text style={styles.resultValue}>+{d.territory}</Text>
                     </View>
                     <View style={styles.resultLine}>
-                      <Text style={styles.resultLabel}>Prisoners</Text>
-                      <Text style={styles.resultValue}>+{d.captures}</Text>
+                      <Text style={styles.resultLabel}>{ruleset === 'japanese' ? 'Prisoners' : 'Stones'}</Text>
+                      <Text style={styles.resultValue}>+{ruleset === 'japanese' ? d.captures : d.stones}</Text>
                     </View>
                     <View style={styles.resultLine}>
                       <Text style={styles.resultLabel}>{color === 'black' ? 'Comp.' : 'Komi'}</Text>
@@ -553,6 +603,25 @@ const styles = StyleSheet.create({
   subText: { color: 'rgba(255,255,255,0.30)', fontSize: 9, letterSpacing: 4, textTransform: 'uppercase', fontWeight: '500' },
   subDot: { color: 'rgba(255,255,255,0.25)', fontSize: 9 },
   rulesText: { color: C.amber100, fontWeight: '700' },
+  sizeRow: { flexDirection: 'row', gap: 28, justifyContent: 'center', marginBottom: 10 },
+  sizeTab: { alignItems: 'center', paddingVertical: 4, minWidth: 56 },
+  sizeText: {
+    fontFamily: SERIF,
+    fontSize: 13,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.20)',
+  },
+  sizeTextActive: { color: C.amber100 },
+  sizeUnderline: {
+    marginTop: 3,
+    height: 2,
+    width: '100%',
+    backgroundColor: 'rgba(254,243,199,0.30)',
+    shadowColor: '#fef3c7',
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+  },
 
   scoreStrip: {
     flexDirection: 'row',
