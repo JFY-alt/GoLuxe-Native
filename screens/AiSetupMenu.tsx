@@ -1,6 +1,7 @@
+import { Pressable, ScrollView, StatusBar, Text, View, LinearGradient } from '../ui';
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { StyleSheet } from 'react-native';
+
 import { Player } from '../types';
 import { C, SERIF } from '../theme';
 
@@ -102,7 +103,7 @@ const AiSetupMenu: React.FC<AiSetupMenuProps> = ({ onStart, onBack }) => {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  heading: { fontFamily: SERIF, fontSize: 30, color: C.amber50, letterSpacing: -0.5, marginBottom: 32 },
+  heading: { fontFamily: SERIF, fontSize: 30, color: C.amber50, letterSpacing: -0.5, marginBottom: 48 },
   section: { width: '100%', maxWidth: 480, marginBottom: 24 },
   label: { fontSize: 10, color: C.white40, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700', marginLeft: 4, marginBottom: 12 },
   row: { flexDirection: 'row', gap: 16 },
@@ -121,14 +122,14 @@ const styles = StyleSheet.create({
   activeText: { color: C.amber50 },
   diffGrid: { gap: 12 },
   diffBtn: {
-    padding: 14,
+    padding: 12,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: C.white10,
   },
   diffBtnActive: { backgroundColor: C.white10, borderColor: 'rgba(255,255,255,0.30)' },
   diffLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, color: C.white30, marginBottom: 4 },
-  diffDesc: { fontFamily: SERIF, fontSize: 11, color: 'rgba(255,255,255,0.35)' },
+  diffDesc: { fontFamily: SERIF, fontSize: 10, color: 'rgba(255,255,255,0.35)' },
   startBtn: {
     width: '100%',
     maxWidth: 480,
@@ -140,9 +141,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(253,230,138,0.20)',
     alignItems: 'center',
   },
-  startText: { color: C.amber100, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 3 },
+  startText: { color: C.amber100, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 2.4 },
   backBtn: { marginTop: 24, padding: 8 },
-  backText: { fontFamily: SERIF, fontSize: 12, color: C.white30, textTransform: 'uppercase', letterSpacing: 3 },
+  backText: { fontFamily: SERIF, fontSize: 12, color: C.white30, textTransform: 'uppercase', letterSpacing: 2.4 },
 });
 
 export default AiSetupMenu;

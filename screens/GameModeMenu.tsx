@@ -1,6 +1,8 @@
+import MenuIcon from '../components/MenuIcon';
+import { Pressable, ScrollView, StatusBar, Text, View, LinearGradient } from '../ui';
 import React from 'react';
-import { Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { StyleSheet } from 'react-native';
+
 import { C, SERIF } from '../theme';
 
 export type GameMode = 'passPlay' | 'vsAI';
@@ -32,7 +34,7 @@ const GameModeMenu: React.FC<GameModeMenuProps> = ({ onSelectMode, onBack }) => 
               <Text style={styles.cardSub}>Local Multiplayer / Practice</Text>
             </View>
             <View style={styles.cardIcon}>
-              <Text style={styles.cardIconText}>›</Text>
+              <MenuIcon kind="phone" />
             </View>
           </Pressable>
           <Pressable onPress={() => onSelectMode('vsAI')} style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}>
@@ -41,7 +43,7 @@ const GameModeMenu: React.FC<GameModeMenuProps> = ({ onSelectMode, onBack }) => 
               <Text style={styles.cardSub}>Challenge the Digital Sage</Text>
             </View>
             <View style={styles.cardIcon}>
-              <Text style={styles.cardIconText}>›</Text>
+              <MenuIcon kind="robot" />
             </View>
           </Pressable>
           <View style={[styles.card, styles.cardDisabled]}>
@@ -50,7 +52,7 @@ const GameModeMenu: React.FC<GameModeMenuProps> = ({ onSelectMode, onBack }) => 
               <Text style={[styles.cardSub, { color: C.white10 }]}>Coming Soon</Text>
             </View>
             <View style={[styles.cardIcon, { borderColor: C.white05 }]}>
-              <Text style={[styles.cardIconText, { color: C.white10 }]}>›</Text>
+              <MenuIcon kind="globe" disabled />
             </View>
           </View>
         </View>
@@ -65,7 +67,7 @@ const GameModeMenu: React.FC<GameModeMenuProps> = ({ onSelectMode, onBack }) => 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  heading: { fontFamily: SERIF, fontSize: 30, color: C.amber50, letterSpacing: -0.5, marginBottom: 32 },
+  heading: { fontFamily: SERIF, fontSize: 30, color: C.amber50, letterSpacing: -0.5, marginBottom: 48 },
   cards: { width: '100%', maxWidth: 420, gap: 16 },
   card: {
     flexDirection: 'row',
@@ -96,7 +98,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cardIconText: { color: C.white40, fontSize: 18, marginTop: -2 },
-  backBtn: { marginTop: 40, padding: 8 },
+  backBtn: { marginTop: 64, padding: 8 },
   backText: { fontFamily: SERIF, fontSize: 12, color: C.white30, textTransform: 'uppercase', letterSpacing: 3 },
 });
 

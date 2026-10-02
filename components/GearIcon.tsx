@@ -1,3 +1,4 @@
+import {useTheme} from '../ui';
 import React, { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
@@ -12,7 +13,8 @@ const GEAR_PATH =
  * web app. On toggle each gear rotates (260° / -260° / 300°) over 1500ms
  * ease-in-out, matching the web's transition-transform duration-[1500ms].
  */
-const GearIcon: React.FC<{ open: boolean; color?: string }> = ({ open, color = '#ffffff' }) => {
+const GearIcon: React.FC<{ open: boolean; color?: string }> = ({ open, color }) => {
+  const {mode}=useTheme(); color=color||(mode==='light'?'#78716c':'#ffffff');
   const r1 = useSharedValue(0);
   const r2 = useSharedValue(0);
   const r3 = useSharedValue(0);

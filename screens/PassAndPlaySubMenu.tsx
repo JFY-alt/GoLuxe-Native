@@ -1,6 +1,8 @@
+import MenuIcon from '../components/MenuIcon';
+import { Pressable, ScrollView, StatusBar, Text, View, LinearGradient } from '../ui';
 import React from 'react';
-import { Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { StyleSheet } from 'react-native';
+
 import { C, SERIF } from '../theme';
 
 interface PassAndPlaySubMenuProps {
@@ -34,7 +36,7 @@ const PassAndPlaySubMenu: React.FC<PassAndPlaySubMenuProps> = ({ onSelectSubMode
                 <Text style={styles.cardSub}>{it.sub}</Text>
               </View>
               <View style={styles.cardIcon}>
-                <Text style={styles.cardIconText}>›</Text>
+                <MenuIcon kind={it.id==='casual'?'coffee':'clock'} />
               </View>
             </Pressable>
           ))}
@@ -50,7 +52,7 @@ const PassAndPlaySubMenu: React.FC<PassAndPlaySubMenuProps> = ({ onSelectSubMode
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  heading: { fontFamily: SERIF, fontSize: 30, color: C.amber50, letterSpacing: -0.5, marginBottom: 32 },
+  heading: { fontFamily: SERIF, fontSize: 30, color: C.amber50, letterSpacing: -0.5, marginBottom: 48 },
   cards: { width: '100%', maxWidth: 420, gap: 16 },
   card: {
     flexDirection: 'row',
@@ -74,7 +76,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   cardIconText: { color: C.white40, fontSize: 18, marginTop: -2 },
-  backBtn: { marginTop: 40, padding: 8 },
+  backBtn: { marginTop: 64, padding: 8 },
   backText: { fontFamily: SERIF, fontSize: 12, color: C.white30, textTransform: 'uppercase', letterSpacing: 3 },
 });
 

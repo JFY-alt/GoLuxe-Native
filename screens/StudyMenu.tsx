@@ -1,8 +1,10 @@
+import { Pressable, ScrollView, StatusBar, Text, View, LinearGradient } from '../ui';
 import React, { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { StyleSheet } from 'react-native';
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Circle } from 'react-native-svg';
+import { SENSEI_LESSONS } from '../data/senseiLessons';
 import { C, SERIF } from '../theme';
 
 export const SENSEI_PROGRESS_KEY = 'goluxe-sensei-progress';
@@ -33,14 +35,7 @@ export const SENSEI_TOPICS = [
 ];
 
 // Beat counts mirror the web SENSEI_LESSONS (verified against data/senseiLessons.ts).
-export const SENSEI_BEAT_COUNTS: Record<string, number> = {
-  fundamentals: 36,
-  opening: 11,
-  balances: 18,
-  strategies: 11,
-  endgame: 10,
-  moves: 20,
-};
+export const SENSEI_BEAT_COUNTS: Record<string, number> = Object.fromEntries(SENSEI_LESSONS.map(l => [l.id, l.beats.length]));
 
 const ProgressRing: React.FC<{ percent: number }> = ({ percent }) => {
   const r = 13;
@@ -61,7 +56,7 @@ const ProgressRing: React.FC<{ percent: number }> = ({ percent }) => {
           strokeLinecap="round"
         />
       </Svg>
-      <View style={StyleSheet.absoluteFill}>
+      <View style={[StyleSheet.absoluteFill,{alignItems:'center',justifyContent:'center'}]}>
         <Text style={styles.ringText}>{Math.round(percent)}%</Text>
       </View>
     </View>
@@ -126,13 +121,13 @@ const StudyMenu: React.FC<StudyMenuProps> = ({ onSelect, onBack }) => {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  heading: { fontFamily: SERIF, fontSize: 28, color: C.amber50, letterSpacing: -0.5, marginBottom: 24 },
+  heading: { fontFamily: SERIF, fontSize: 24, color: C.amber50, letterSpacing: -0.5, marginBottom: 20 },
   cards: { width: '100%', maxWidth: 420, gap: 12 },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 18,
+    padding: 16,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: C.white10,
@@ -145,16 +140,15 @@ const styles = StyleSheet.create({
   cardPressed: { backgroundColor: C.white05 },
   cardText: { flex: 1, paddingRight: 16 },
   cardTitle: { fontFamily: SERIF, fontSize: 16, color: C.amber50, letterSpacing: 0.5, textAlign: 'left' },
-  cardSub: { fontSize: 10, color: C.white30, textTransform: 'uppercase', letterSpacing: 1.5, marginTop: 4, textAlign: 'left' },
+  cardSub: { fontSize: 10, color: C.white30, textTransform: 'uppercase', letterSpacing: 1, marginTop: 4, textAlign: 'left' },
   ringText: {
-    flex: 1,
     textAlign: 'center',
     textAlignVertical: 'center',
     fontSize: 7,
     fontWeight: '700',
     color: 'rgba(254,243,199,0.80)',
   },
-  backBtn: { marginTop: 24, padding: 8 },
+  backBtn: { marginTop: 28, padding: 8 },
   backText: { fontFamily: SERIF, fontSize: 12, color: C.white30, textTransform: 'uppercase', letterSpacing: 3 },
 });
 

@@ -1,15 +1,11 @@
+import GuideActions from '../components/GuideActions';
+import GuideHeader from '../components/GuideHeader';
+import { useWindowDimensions } from 'react-native';
+import { useTheme } from '../ui';
+import { Pressable, ScrollView, StatusBar, Text, View, LinearGradient, AnimatedView } from '../ui';
 import React, { useEffect, useRef, useState } from 'react';
-import {
-  Dimensions,
-  Modal,
-  Pressable,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Dimensions, Modal, StyleSheet } from 'react-native';
+
 import Animated, { SlideInRight, ZoomIn } from 'react-native-reanimated';
 import Board from '../components/Board';
 import Ishi, { IshiMood } from '../components/Ishi';
@@ -26,8 +22,7 @@ import {
 import { Intersection, Player, Point } from '../types';
 import { C, SERIF } from '../theme';
 
-const { width: SW, height: SH } = Dimensions.get('window');
-const BOARD_PX = Math.min(SW * 0.86, SH - 440, 380);
+
 
 // ---- Board setups, ported verbatim from the web tutorial ----
 type Setup = { p: Point; c: Player }[];
@@ -142,6 +137,9 @@ interface TutorialScreenProps {
 }
 
 const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, onStudy }) => {
+  const { width, height } = useWindowDimensions();
+  const BOARD_PX = Math.max(1, Math.min(width*.86, height-440));
+  const { mode: themeMode } = useTheme();
   const [board, setBoard] = useState<Intersection[][]>(() => createEmptyBoard(9));
   const [history, setHistory] = useState<string[]>(() => [getBoardString(createEmptyBoard(9))]);
   const [tutStep, setTutStep] = useState(0);
@@ -153,6 +151,7 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
   const [tutNudge, setTutNudge] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const nudgeTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const flashNotice = (msg: string) => {
@@ -195,7 +194,7 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
     setTutStep(step);
   };
 
-  useEffect(() => { setupTutStep(0); }, []);
+  useEffect(() => { setupTutStep(0); return ()=>{if(nudgeTimer.current)clearTimeout(nudgeTimer.current);if(noticeTimer.current)clearTimeout(noticeTimer.current);}; }, []);
 
   // Animated territory counting on step 7: reveal one point at a time.
   useEffect(() => {
@@ -228,7 +227,7 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
 
   const nudge = (msg: string) => {
     setTutNudge(msg);
-    setTimeout(() => setTutNudge(null), 2500);
+    if(nudgeTimer.current)clearTimeout(nudgeTimer.current);nudgeTimer.current=setTimeout(() => setTutNudge(null), 2500);
   };
 
   const onBoardTap = (p: Point) => {
@@ -282,7 +281,7 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
       } else nudge('Tap the glowing point — I dare you.');
       return;
     }
-    nudge('Follow the lesson — Ishi will tell you when to tap.');
+    // The web leaves non-interactive lesson taps unchanged.
   };
 
   const onPassPress = () => {
@@ -502,7 +501,7 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
         pointerEvents="none"
       />
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <Text style={styles.kicker}>How to Play · Ishi</Text>
+        <GuideHeader/>
         <View style={styles.boardPad}>
           <Board
             board={board}
@@ -511,6 +510,8 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
             turn="black"
             boardPx={BOARD_PX}
             interactive={tutStep < 11}
+            hideAtari={false}
+            theme={themeMode === 'light' ? 'washi' : 'classic'}
             targets={tutTarget && !targetOnAtari ? [tutTarget] : []}
             showLiberties
             territoryWash={showWash ? tutTerritory : null}
@@ -525,19 +526,12 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
           </View>
         )}
 
-        {/* Pass button gets its moment on step 8 */}
-        {tutStep === 8 && tutPhase === 'await-pass' && (
-          <Pressable onPress={onPassPress} style={styles.passBtn}>
-            <Text style={styles.passText}>Pass</Text>
-          </Pressable>
-        )}
-
         {/* Ishi lesson card — below the board, never covering it */}
         {card && (
-          <View style={styles.cardWrap}>
+          <View style={[styles.cardWrap,{width:BOARD_PX}]}>
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <Ishi mood={card.mood} size={30} />
+                <Ishi mood={card.mood} size={28} />
                 <View style={styles.cardHeadText}>
                   <Text style={styles.partLabel}>Lesson {tutStep + 1} of 12</Text>
                   <Text style={styles.cardTitle} numberOfLines={1}>{card.title}</Text>
@@ -549,7 +543,7 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
               <View style={styles.progressTrack}>
                 <View style={[styles.progressFill, { width: `${((tutStep + 1) / 12) * 100}%` }]} />
               </View>
-              <Animated.View key={`${tutStep}-${tutPhase}`} entering={SlideInRight.duration(280)} style={styles.cardBody}>
+              <AnimatedView key={`${tutStep}-${tutPhase}`}  style={styles.cardBody}>
                 <Text style={styles.cardText}>{renderMarkup(card.text)}</Text>
                 {tutNudge && <Text style={styles.nudge}>{tutNudge}</Text>}
                 {card.chips && (
@@ -563,7 +557,7 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
                     ))}
                   </View>
                 )}
-              </Animated.View>
+              </AnimatedView>
               <View style={styles.btnRow}>
                 {tutStep > 0 && tutStep < 11 && (
                   <Pressable onPress={() => setupTutStep(tutStep - 1)} style={styles.backCardBtn}>
@@ -579,12 +573,13 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
             </View>
           </View>
         )}
+        <GuideActions width={BOARD_PX} onPass={onPassPress}/>
       </ScrollView>
 
       {/* Graduation modal — web: animate-in zoom-in duration-300 */}
       <Modal visible={tutStep === 11} transparent animationType="fade">
         <View style={styles.modalBg}>
-          <Animated.View entering={ZoomIn.duration(300)} style={styles.modalCard}>
+          <AnimatedView entering={ZoomIn.duration(300)} style={styles.modalCard}>
             <View style={{ alignItems: 'center', marginBottom: 12 }}>
               <Ishi mood="proud" size={76} />
             </View>
@@ -609,7 +604,7 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
                 <Text style={styles.modalBackText}>Back to menu</Text>
               </Pressable>
             </View>
-          </Animated.View>
+          </AnimatedView>
         </View>
       </Modal>
 
@@ -656,20 +651,20 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(20,20,20,0.95)', paddingHorizontal: 10, paddingVertical: 6,
     shadowColor: '#000', shadowOpacity: 0.7, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 8,
   },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   cardHeadText: { flex: 1, minWidth: 0 },
   partLabel: {
     fontSize: 8, textTransform: 'uppercase', letterSpacing: 1.5,
     color: 'rgba(253,230,138,0.70)', fontWeight: '700', marginBottom: 2,
   },
-  cardTitle: { fontFamily: SERIF, fontSize: 12, color: C.amber100, lineHeight: 15 },
+  cardTitle: { fontFamily: SERIF, fontSize: 10, color: C.amber100, lineHeight: 13.75 },
   exitBtn: { padding: 4 },
   exitText: { color: C.white40, fontSize: 14 },
-  progressTrack: { height: 2, borderRadius: 1, backgroundColor: C.white10, overflow: 'hidden', marginTop: 6 },
+  progressTrack: { height: 2, borderRadius: 1, backgroundColor: C.white10, overflow: 'hidden', marginTop: 4 },
   progressFill: { height: '100%', backgroundColor: 'rgba(252,211,77,0.80)', borderRadius: 1 },
-  cardBody: { paddingTop: 6 },
-  cardText: { fontFamily: SERIF, fontSize: 12, lineHeight: 17, color: 'rgba(255,251,235,0.85)' },
-  nudge: { fontSize: 11, color: 'rgba(253,230,138,0.80)', fontStyle: 'italic', marginTop: 4 },
+  cardBody: { paddingTop: 4 },
+  cardText: { fontFamily: SERIF, fontSize: 11, lineHeight: 15.125, color: 'rgba(255,251,235,0.85)' },
+  nudge: { fontSize: 10, color: 'rgba(253,230,138,0.80)', fontStyle: 'italic', marginTop: 4 },
   chips: { flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' },
   chip: { borderRadius: 14, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 4 },
   chipAmber: { borderColor: 'rgba(253,230,138,0.30)', backgroundColor: 'rgba(252,211,77,0.10)' },
@@ -678,14 +673,14 @@ const styles = StyleSheet.create({
   chipTextAmber: { color: '#fde68a' },
   chipTextSky: { color: '#bae6fd' },
   chipValue: { fontVariant: ['tabular-nums'] },
-  btnRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  btnRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
   backCardBtn: {
-    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 12,
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12,
     backgroundColor: C.white05, borderWidth: 1, borderColor: C.white10,
   },
   backCardText: { color: 'rgba(255,255,255,0.60)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700' },
   nextBtn: {
-    flex: 1, paddingHorizontal: 16, paddingVertical: 7, borderRadius: 12,
+    flex: 1, paddingHorizontal: 16, paddingVertical: 6, borderRadius: 12,
     backgroundColor: 'rgba(253,230,138,0.15)', borderWidth: 1, borderColor: 'rgba(253,230,138,0.30)',
     alignItems: 'center',
   },

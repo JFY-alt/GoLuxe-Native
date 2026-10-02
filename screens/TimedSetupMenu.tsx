@@ -1,6 +1,7 @@
+import { Pressable, ScrollView, StatusBar, Text, View, LinearGradient } from '../ui';
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { StyleSheet } from 'react-native';
+
 import Slider from '@react-native-community/slider';
 import { TimeSettings, TimeSystem } from '../types';
 import { C, SERIF } from '../theme';
@@ -211,7 +212,7 @@ const TimedSetupMenu: React.FC<TimedSetupMenuProps> = ({ onStart, onBack }) => {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  heading: { fontFamily: SERIF, fontSize: 26, color: C.amber50, letterSpacing: -0.5, marginBottom: 20 },
+  heading: { fontFamily: SERIF, fontSize: 24, color: C.amber50, letterSpacing: -0.5, marginBottom: 20 },
   tabs: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -261,14 +262,14 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   explainerTitle: { fontSize: 9, color: 'rgba(254,243,199,0.80)', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 4, fontFamily: SERIF },
-  explainerBody: { fontSize: 11, color: 'rgba(255,255,255,0.50)', lineHeight: 16, fontFamily: SERIF },
+  explainerBody: { fontSize: 10, color: 'rgba(255,255,255,0.50)', lineHeight: 16, fontFamily: SERIF },
   presets: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 12 },
-  preset: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1, borderColor: C.white05 },
+  preset: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 4, borderWidth: 1, borderColor: C.white05 },
   presetText: { fontSize: 9, color: C.white40, textTransform: 'uppercase', letterSpacing: 1.5 },
   startBtn: {
     width: '100%',
     maxWidth: 480,
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderRadius: 12,
     backgroundColor: 'rgba(254,243,199,0.10)',
     borderWidth: 1,
