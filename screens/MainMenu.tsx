@@ -1,128 +1,25 @@
-import React, { useState } from 'react';
-import { Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { FadeIn, FadeOut, ZoomOut } from 'react-native-reanimated';
-import { C, SERIF } from '../theme';
+import React, {useCallback, useEffect, useState} from 'react';
+import {Pressable, StatusBar, Text, View, StyleSheet} from 'react-native';
+import {LinearGradient} from 'expo-linear-gradient';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import Animated, {useSharedValue,useAnimatedStyle,withTiming} from 'react-native-reanimated';
+import HomeCinema from '../components/HomeCinema';
+import {HOME_REEL_SOURCE,HOME_CINEMA} from '../config/homeCinema';
 
-interface MainMenuProps {
-  onPlay: () => void;
-  onWhatIsGo: () => void;
-  onHowToPlay: () => void;
-  onStudy: () => void;
+interface MainMenuProps {onPlay:()=>void;onWhatIsGo:()=>void;onHowToPlay:()=>void;onStudy:()=>void;introSeen?:boolean;onIntroSeen?:()=>void;}
+/** Fixed dark cinema, independent of the theme selected inside a game. */
+export default function MainMenu({onPlay,onWhatIsGo,onHowToPlay,onStudy,introSeen=false,onIntroSeen}:MainMenuProps){
+ const insets=useSafeAreaInsets();const [exiting,setExiting]=useState(false);
+ const [menuReady,setMenuReady]=useState(!HOME_REEL_SOURCE||introSeen);
+ const opacity=useSharedValue(menuReady?1:0),offset=useSharedValue(menuReady?0:10);
+ const menuStyle=useAnimatedStyle(()=>({opacity:opacity.value,transform:[{translateY:offset.value}]}));
+ const reveal=useCallback(()=>{setMenuReady(true);onIntroSeen?.();},[onIntroSeen]);
+ useEffect(()=>{if(menuReady){opacity.value=withTiming(1,{duration:HOME_CINEMA.menuFadeMs});offset.value=withTiming(0,{duration:HOME_CINEMA.menuFadeMs});}},[menuReady]);
+ const navigate=(fn:()=>void)=>{if(exiting)return;setExiting(true);fn();};
+ const buttons=[{label:'What is Go?',fn:onWhatIsGo},{label:'How to Play',fn:onHowToPlay},{label:'Study',fn:onStudy},{label:'Play',fn:onPlay}];
+ return <View style={styles.root}><StatusBar barStyle="light-content" backgroundColor="#000"/>{HOME_REEL_SOURCE&&<HomeCinema source={HOME_REEL_SOURCE} skipOpening={introSeen} active={!exiting} onMenuReady={reveal}/>}
+ <LinearGradient pointerEvents="none" colors={['rgba(0,0,0,.15)','rgba(0,0,0,.05)','rgba(0,0,0,.65)']} locations={[0,.45,1]} style={StyleSheet.absoluteFill}/>
+ <Animated.View pointerEvents={menuReady?'auto':'none'} accessibilityElementsHidden={!menuReady} importantForAccessibility={menuReady?'auto':'no-hide-descendants'} style={[styles.center,{paddingTop:insets.top+24,paddingBottom:insets.bottom+24},menuStyle]}><View style={styles.titleBlock}><Text style={styles.title}>GoLuxe</Text><Text style={styles.subtitle}>Strategic Purity</Text></View><View style={styles.buttons}>{buttons.map(b=><Pressable accessibilityRole="button" key={b.label} onPress={()=>navigate(b.fn)} disabled={exiting} style={({pressed})=>[styles.btn,pressed&&styles.btnPressed]}><Text style={styles.btnText}>{b.label}</Text></Pressable>)}</View></Animated.View>
+ </View>;
 }
-
-/**
- * Home screen matching the web MainMenu:
- * black backdrop, giant serif GoLuxe title, "STRATEGIC PURITY" letterspaced
- * subtitle, ghost buttons (border-white/10, serif uppercase tracking).
- */
-const MainMenu: React.FC<MainMenuProps> = ({ onPlay, onWhatIsGo, onHowToPlay, onStudy }) => {
-  // Web: button tap → 500ms fade-out/zoom-out → navigate
-  const [isExiting, setIsExiting] = useState(false);
-  const handleNav = (fn: () => void) => {
-    if (isExiting) return;
-    setIsExiting(true);
-    setTimeout(fn, 500);
-  };
-  const btns: { label: string; fn: () => void }[] = [
-    { label: 'What is Go?', fn: () => handleNav(onWhatIsGo) },
-    { label: 'How to Play', fn: () => handleNav(onHowToPlay) },
-    { label: 'Study', fn: () => handleNav(onStudy) },
-    { label: 'Play', fn: () => handleNav(onPlay) },
-  ];
-
-  return (
-    <Animated.View
-      style={styles.root}
-      exiting={FadeOut.duration(500)}
-    >
-      <StatusBar barStyle="light-content" />
-      {/* deep dark backdrop with a faint amber wash from the top, like the web menus */}
-      <LinearGradient
-        colors={['#141210', '#0d0d0d', '#000000']}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      <LinearGradient
-        colors={['rgba(254,243,199,0.06)', 'rgba(254,243,199,0)']}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 0.45 }}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
-
-      <View style={styles.center}>
-        {/* Web home: staggered fade+rise entrance (delays mirror the web's 150–800ms) */}
-        <Animated.View entering={FadeIn.duration(700).delay(150)} style={styles.titleBlock}>
-          <Text style={styles.title}>GoLuxe</Text>
-          <Text style={styles.subtitle}>Strategic Purity</Text>
-        </Animated.View>
-        <View style={styles.buttons}>
-          {btns.map((b, i) => (
-            <Animated.View key={b.label} entering={FadeIn.duration(700).delay(400 + i * 130)}>
-              <Pressable
-                onPress={b.fn}
-                style={({ pressed }) => [
-                  styles.btn,
-                  pressed && styles.btnPressed,
-                  pressed && { transform: [{ scale: 0.95 }] },
-                ]}
-              >
-                <Text style={styles.btnText}>{b.label}</Text>
-              </Pressable>
-            </Animated.View>
-          ))}
-        </View>
-      </View>
-    </Animated.View>
-  );
-};
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#000' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 },
-  titleBlock: { alignItems: 'center', marginBottom: 56 },
-  title: {
-    fontFamily: SERIF,
-    fontSize: 76,
-    color: C.amber50,
-    letterSpacing: -2,
-    lineHeight: 80,
-    textShadowColor: 'rgba(0,0,0,0.8)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 12,
-  },
-  subtitle: {
-    color: 'rgba(254,243,199,0.60)',
-    fontWeight: '300',
-    fontSize: 12,
-    letterSpacing: 9,
-    textTransform: 'uppercase',
-    marginTop: 10,
-    textShadowColor: 'rgba(0,0,0,0.8)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 8,
-  },
-  buttons: { width: '100%', gap: 18, alignItems: 'center' },
-  btn: {
-    paddingHorizontal: 32,
-    paddingVertical: 13,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: C.white10,
-    backgroundColor: 'rgba(0,0,0,0.30)',
-    minWidth: 220,
-    alignItems: 'center',
-  },
-  btnPressed: { backgroundColor: C.white05 },
-  btnText: {
-    fontFamily: SERIF,
-    color: C.white40,
-    fontSize: 12,
-    letterSpacing: 3.2,
-    textTransform: 'uppercase',
-  },
-});
-
-export default MainMenu;
+const styles=StyleSheet.create({root:{flex:1,backgroundColor:'#000'},center:{flex:1,alignItems:'center',justifyContent:'center',paddingHorizontal:40},titleBlock:{alignItems:'center',marginBottom:40},title:{fontFamily:'CormorantGaramond_400',fontSize:72,lineHeight:72,color:'#fffbeb',letterSpacing:-3.6},subtitle:{fontFamily:'Inter_300',color:'rgba(254,243,199,.55)',fontSize:12,letterSpacing:9.6,textTransform:'uppercase',marginTop:8},buttons:{width:'100%',gap:24,alignItems:'center'},btn:{paddingHorizontal:32,paddingVertical:12,borderRadius:12,borderWidth:1,borderColor:'rgba(255,255,255,.18)',backgroundColor:'rgba(0,0,0,.18)',alignItems:'center'},btnPressed:{backgroundColor:'rgba(255,255,255,.1)'},btnText:{fontFamily:'CormorantGaramond_400',color:'rgba(255,255,255,.70)',fontSize:12,letterSpacing:2.4,textTransform:'uppercase'}});

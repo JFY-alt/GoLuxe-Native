@@ -23,51 +23,40 @@ export const tickClock = (
   delta: number,
 ): { clock: PlayerClock; timedOut: boolean } => {
   const next = { ...clock };
-  if (!next.isInOvertime) {
-    next.mainTimeLeft -= delta;
-    if (next.mainTimeLeft <= 0) {
-      if (settings.system === 'absolute' || settings.system === 'fischer') {
-        return { clock, timedOut: true };
-      } else if (settings.system === 'ing') {
-        if (next.ingPeriodsLeft > 0) {
-          next.ingPeriodsLeft -= 1;
-          next.mainTimeLeft = (settings.ingBlockSeconds || 600) * 1000;
-        } else {
-          return { clock, timedOut: true };
-        }
-      } else {
-        next.isInOvertime = true;
-        if (settings.system === 'japanese') {
-          next.byoyomiTimeLeft = (settings.byoyomiSeconds || 30) * 1000;
-        } else if (settings.system === 'canadian') {
-          next.canadianTimeLeft = (settings.canadianMinutes || 10) * 60000;
-        } else if (settings.system === 'nhk') {
-          next.nhkTimeLeft = (settings.nhkSeconds || 30) * 1000;
-        }
-      }
+  let remaining = Math.max(0, delta);
+  const timeout = () => ({ clock: next, timedOut: true });
+  if (!next.isInOvertime && settings.system !== 'ing') {
+    const elapsed = Math.min(remaining, Math.max(0,next.mainTimeLeft));
+    next.mainTimeLeft = Math.max(0,next.mainTimeLeft-elapsed); remaining -= elapsed;
+    if (next.mainTimeLeft === 0) {
+      if (settings.system === 'absolute' || settings.system === 'fischer') return timeout();
+      next.isInOvertime = true;
     }
-  } else {
-    if (settings.system === 'japanese') {
-      next.byoyomiTimeLeft -= delta;
-      if (next.byoyomiTimeLeft <= 0) {
-        next.byoyomiPeriodsLeft -= 1;
-        if (next.byoyomiPeriodsLeft <= 0) return { clock, timedOut: true };
-        next.byoyomiTimeLeft = (settings.byoyomiSeconds || 30) * 1000;
-      }
-    } else if (settings.system === 'canadian') {
-      next.canadianTimeLeft -= delta;
-      if (next.canadianTimeLeft <= 0) return { clock, timedOut: true };
-    } else if (settings.system === 'nhk') {
-      next.nhkTimeLeft -= delta;
-      if (next.nhkTimeLeft <= 0) {
-        if (next.nhkPeriodsLeft > 0) {
-          next.nhkPeriodsLeft -= 1;
-          next.nhkTimeLeft = 60000; // 1 minute thinking time
-        } else {
-          return { clock, timedOut: true };
-        }
-      }
+  }
+  if (settings.system === 'ing') {
+    while (remaining >= next.mainTimeLeft) {
+      remaining -= Math.max(0,next.mainTimeLeft); next.mainTimeLeft = 0;
+      if (next.ingPeriodsLeft <= 0) return timeout();
+      next.ingPeriodsLeft--; next.mainTimeLeft = (settings.ingBlockSeconds ?? 600)*1000;
     }
+    next.mainTimeLeft -= remaining;
+  } else if (next.isInOvertime && settings.system === 'japanese') {
+    while (remaining >= next.byoyomiTimeLeft) {
+      remaining -= Math.max(0,next.byoyomiTimeLeft); next.byoyomiTimeLeft = 0;
+      next.byoyomiPeriodsLeft--; if (next.byoyomiPeriodsLeft <= 0) return timeout();
+      next.byoyomiTimeLeft = (settings.byoyomiSeconds ?? 30)*1000;
+    }
+    next.byoyomiTimeLeft -= remaining;
+  } else if (next.isInOvertime && settings.system === 'canadian') {
+    next.canadianTimeLeft = Math.max(0,next.canadianTimeLeft-remaining);
+    if (next.canadianTimeLeft === 0) return timeout();
+  } else if (next.isInOvertime && settings.system === 'nhk') {
+    while (remaining >= next.nhkTimeLeft) {
+      remaining -= Math.max(0,next.nhkTimeLeft); next.nhkTimeLeft = 0;
+      if (next.nhkPeriodsLeft <= 0) return timeout();
+      next.nhkPeriodsLeft--; next.nhkTimeLeft = 60000;
+    }
+    next.nhkTimeLeft -= remaining;
   }
   return { clock: next, timedOut: false };
 };

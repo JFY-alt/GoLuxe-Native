@@ -1,14 +1,11 @@
+import GuideActions from '../components/GuideActions';
+import GuideHeader from '../components/GuideHeader';
+import { useWindowDimensions } from 'react-native';
+import { useTheme } from '../ui';
+import { Pressable, ScrollView, StatusBar, Text, View, LinearGradient, AnimatedView } from '../ui';
 import React, { useEffect, useRef, useState } from 'react';
-import {
-  Dimensions,
-  Pressable,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Dimensions, StyleSheet } from 'react-native';
+
 import Animated, { SlideInRight } from 'react-native-reanimated';
 import Board from '../components/Board';
 import Sensei, { SenseiMood } from '../components/Sensei';
@@ -19,8 +16,7 @@ import { Intersection, Point } from '../types';
 import { saveSenseiProgress } from './StudyMenu';
 import { C, SERIF } from '../theme';
 
-const { width: SW, height: SH } = Dimensions.get('window');
-const BOARD_PX = Math.min(SW * 0.86, SH - 440, 380);
+
 
 interface SenseiScreenProps {
   topic: string;
@@ -36,6 +32,9 @@ const renderSenseiText = renderMarkup;
  * once), choices, marks, lines, Back restores the beat's starting board.
  */
 const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
+  const { width, height } = useWindowDimensions();
+  const BOARD_PX = Math.max(1, Math.min(width*.86, height-440));
+  const { mode: themeMode } = useTheme();
   const lesson = SENSEI_LESSONS.find((l) => l.id === topic);
 
   const [board, setBoard] = useState<Intersection[][]>(() => createEmptyBoard(9));
@@ -79,6 +78,7 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
   useEffect(() => {
     saveSenseiProgress(topic, 0);
     setupBeat(0);
+    return ()=>{if(nudgeTimer.current)clearTimeout(nudgeTimer.current);};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topic]);
 
@@ -107,7 +107,7 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
     const { newBoard, captureCount } = checkCaptures(temp, p, 'black');
     void captureCount;
     const boardStr = getBoardString(newBoard);
-    if (history.length >= 2 && boardStr === history[history.length - 2]) return false; // ko
+    if (history.includes(boardStr)) return false; // ko
     setBoard(newBoard);
     setHistory((h) => [...h, boardStr]);
     return true;
@@ -181,7 +181,7 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
         pointerEvents="none"
       />
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <Text style={styles.kicker}>Study Room · Iwao</Text>
+        <GuideHeader/>
         <View style={styles.boardPad}>
           <Board
             board={board}
@@ -190,6 +190,9 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
             turn="black"
             boardPx={BOARD_PX}
             interactive
+            showLiberties
+            hideAtari={false}
+            theme={themeMode === 'light' ? 'washi' : 'classic'}
             targets={targets}
             marks={marks}
             lines={lines}
@@ -197,10 +200,10 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
         </View>
 
         {/* Sensei card — below the board, never covering it */}
-        <View style={styles.cardWrap}>
+        <View style={[styles.cardWrap,{width:BOARD_PX}]}>
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <Sensei mood={mood} size={30} />
+              <Sensei mood={mood} size={28} />
               <View style={styles.cardHeadText}>
                 <Text style={styles.partLabel}>
                   Part {beatIdx + 1} of {lesson.beats.length} · {lesson.title}
@@ -217,8 +220,8 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
               <View style={[styles.progressFill, { width: `${((beatIdx + 1) / lesson.beats.length) * 100}%` }]} />
             </View>
             {/* Beat text transitions: fade+slide on every beat change */}
-            <Animated.View key={beatIdx} entering={SlideInRight.duration(280)} style={styles.cardBody}>
-              <Text style={styles.cardText}>{renderMarkup(beat.text)}</Text>
+            <AnimatedView key={beatIdx}  style={styles.cardBody}>
+              <Text style={styles.cardText}>{renderMarkup(beat.text,'sensei')}</Text>
               {nudge && <Text style={styles.nudge}>{nudge}</Text>}
               {beat.chips && (
                 <View style={styles.chips}>
@@ -231,7 +234,7 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
                   ))}
                 </View>
               )}
-            </Animated.View>
+            </AnimatedView>
             <View style={styles.btnRow}>
               {beatIdx > 0 && (
                 <Pressable onPress={() => setupBeat(beatIdx - 1)} style={styles.backCardBtn}>
@@ -246,6 +249,7 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
             </View>
           </View>
         </View>
+        <GuideActions width={BOARD_PX}/>
       </ScrollView>
     </View>
   );
@@ -281,7 +285,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 8,
   },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   cardHeadText: { flex: 1, minWidth: 0 },
   partLabel: {
     fontSize: 8,
@@ -291,14 +295,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 2,
   },
-  cardTitle: { fontFamily: SERIF, fontSize: 12, color: C.amber100, lineHeight: 15 },
+  cardTitle: { fontFamily: SERIF, fontSize: 10, color: C.amber100, lineHeight: 13.75 },
   exitBtn: { padding: 4 },
   exitText: { color: C.white40, fontSize: 14 },
-  progressTrack: { height: 2, borderRadius: 1, backgroundColor: C.white10, overflow: 'hidden', marginTop: 6 },
+  progressTrack: { height: 2, borderRadius: 1, backgroundColor: C.white10, overflow: 'hidden', marginTop: 4 },
   progressFill: { height: '100%', backgroundColor: 'rgba(252,211,77,0.80)', borderRadius: 1 },
-  cardBody: { paddingTop: 6 },
-  cardText: { fontFamily: SERIF, fontSize: 12, lineHeight: 17, color: 'rgba(255,251,235,0.85)' },
-  nudge: { fontSize: 11, color: 'rgba(253,230,138,0.80)', fontStyle: 'italic', marginTop: 4 },
+  cardBody: { paddingTop: 4 },
+  cardText: { fontFamily: SERIF, fontSize: 11, lineHeight: 15.125, color: 'rgba(255,251,235,0.85)' },
+  nudge: { fontSize: 10, color: 'rgba(253,230,138,0.80)', fontStyle: 'italic', marginTop: 4 },
   chips: { flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' },
   chip: {
     borderRadius: 14,
@@ -310,10 +314,10 @@ const styles = StyleSheet.create({
   },
   chipText: { fontSize: 11, fontWeight: '700', color: '#fde68a' },
   chipValue: { fontVariant: ['tabular-nums'] },
-  btnRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  btnRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
   backCardBtn: {
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingVertical: 6,
     borderRadius: 12,
     backgroundColor: C.white05,
     borderWidth: 1,
@@ -323,7 +327,7 @@ const styles = StyleSheet.create({
   nextBtn: {
     flex: 1,
     paddingHorizontal: 16,
-    paddingVertical: 7,
+    paddingVertical: 6,
     borderRadius: 12,
     backgroundColor: 'rgba(253,230,138,0.15)',
     borderWidth: 1,

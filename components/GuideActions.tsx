@@ -1,0 +1,4 @@
+import React from 'react';
+import {Pressable,Text,View} from '../ui';
+import {C,SERIF} from '../theme';
+export default function GuideActions({width,onPass}:{width:number;onPass?:()=>void}){return <View style={{width,flexDirection:'row',gap:8,marginTop:8}}>{['Undo','Pass','Resign','Refresh'].map(label=>{const enabled=label==='Pass'&&!!onPass;return <Pressable key={label} onPress={enabled?onPass:undefined} disabled={!enabled} style={{flex:1,minWidth:60,paddingVertical:8,paddingHorizontal:8,borderRadius:12,borderWidth:1,borderColor:label==='Resign'?'rgba(239,68,68,.20)':C.white10,backgroundColor:label==='Resign'?'rgba(239,68,68,.10)':C.white05,opacity:enabled?1:label==='Undo'?.05:.3,alignItems:'center'}}><Text style={{fontFamily:SERIF,color:label==='Resign'?'#fee2e2':'rgba(255,255,255,.70)',fontSize:9,letterSpacing:.9,textTransform:'uppercase'}}>{label}</Text></Pressable>;})}</View>;}

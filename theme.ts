@@ -18,4 +18,4 @@ export const C = {
   red: '#dc2626',
 };
 
-export const SERIF = 'Georgia'; // closest iOS match to web font-serif
+export const SERIF = 'CormorantGaramond';

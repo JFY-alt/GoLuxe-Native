@@ -1,15 +1,16 @@
+import { Text } from '../ui';
 import React from 'react';
-import { Text } from 'react-native';
+
 
 /**
  * Mini-markup shared by lesson cards:
  * **bold** -> amber, *italic* -> italic, !!danger!! -> red,
  * ~~sky~~ -> light blue, __green__ -> emerald.
  */
-export const renderMarkup = (text: string): React.ReactNode => {
-  const parts = text.split(/(\*\*[^*]+\*\*|!![^!]+!!|~~[^~]+~~|__[^_]+__|\*[^*]+\*)/g);
+export const renderMarkup = (text: string, mode: 'tutorial'|'sensei'='tutorial'): React.ReactNode => {
+  const parts = text.split(mode==='sensei'?/(\*\*[^*]+\*\*|\*[^*]+\*)/g:/(\*\*[^*]+\*\*|!![^!]+!!|~~[^~]+~~|__[^_]+__|\*[^*]+\*)/g);
   return (
-    <Text>
+    <>
       {parts.map((part, i) => {
         if (part.length > 4 && part.startsWith('**') && part.endsWith('**'))
           return (
@@ -43,6 +44,6 @@ export const renderMarkup = (text: string): React.ReactNode => {
           );
         return <Text key={i}>{part}</Text>;
       })}
-    </Text>
+    </>
   );
 };

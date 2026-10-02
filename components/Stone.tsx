@@ -1,5 +1,5 @@
 import React, { memo, useId } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, Image } from 'react-native';
 import Svg, { Circle, Defs, Ellipse, RadialGradient, Stop } from 'react-native-svg';
 import { Player } from '../types';
 
@@ -63,6 +63,7 @@ const Stone: React.FC<StoneProps> = ({ color, size }) => {
           fill={isBlack ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.70)'}
         />
       </Svg>
+      <Image source={require("../assets/carbon-fibre.png")} resizeMode="repeat" style={[StyleSheet.absoluteFill, { opacity: .05, borderRadius: r }]} />
     </View>
   );
 };

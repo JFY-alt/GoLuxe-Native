@@ -1,1 +1,29 @@
-{"compilerOptions":{"allowSyntheticDefaultImports":true,"esModuleInterop":true,"jsx":"react-native","module":"esnext","moduleResolution":"bundler","noImplicitAny":false,"resolveJsonModule":true,"skipLibCheck":true,"strict":false,"strictNullChecks":false,"target":"esnext"},"include":["App.tsx","index.js","logic/**/*.ts","types.ts"]}
+{
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "jsx": "react-native",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "noImplicitAny": false,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "strictNullChecks": false,
+    "target": "esnext",
+    "types": [
+      "node",
+      "react"
+    ]
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "web-build"
+  ],
+  "extends": "expo/tsconfig.base"
+}

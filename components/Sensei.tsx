@@ -1,24 +1,33 @@
 import React from 'react';
-import { View } from 'react-native';
-import Svg, { Circle, Defs, Ellipse, Path, RadialGradient, Stop } from 'react-native-svg';
+import Svg, { Path, Ellipse, Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
+import { Animated, useCharacterMotion } from './CharacterMotion';
 
 export type SenseiMood = 'happy' | 'excited' | 'sad' | 'proud';
 
 interface SenseiProps {
   mood?: SenseiMood;
+  /** bounce | celebrate | none — applied to the wrapper div (HTML transform, iOS-safe) */
+  animation?: 'bounce' | 'celebrate' | 'none';
   size?: number;
 }
 
 /**
  * Iwao (巌) — "boulder". Ishi's teacher, the Study Room sensei.
- * Massive ancient jade boulder: serene meditating closed eyes, long white
- * sage eyebrows, faint blush, stubby stone arms, speckles, one hairline crack.
- * Ported 1:1 from the web Sensei.tsx SVG.
+ * A massive ancient jade boulder in the same chibi species as Ishi, but
+ * visibly larger and calmer: serene meditating closed eyes, long white sage
+ * eyebrows (the signature), faint muted blush, stubby stone arms, subtle
+ * speckles and one hairline crack from centuries of wisdom.
+ * The SVG itself is fully static (no internal animation) so it renders
+ * identically on iOS Safari; motion is applied to the wrapper div.
  */
-const Sensei: React.FC<SenseiProps> = ({ mood = 'happy', size = 96 }) => {
-  const ink = '#173b2f';
+const Sensei: React.FC<SenseiProps> = ({ mood = 'happy', animation = 'bounce', size = 80 }) => {
+  const motion = useCharacterMotion(animation, size);
+
+  const ink = '#173b2f'; // dark jade for face lines
   const sageWhite = '#f4f1e6';
 
+  // Serene meditating eyes — gentle downward arcs, calm in every mood.
+  // The master stays serene; mood reads from brows, mouth and arms.
   const eyes =
     mood === 'sad' ? (
       <>
@@ -32,6 +41,7 @@ const Sensei: React.FC<SenseiProps> = ({ mood = 'happy', size = 96 }) => {
       </>
     );
 
+  // Signature long white sage eyebrows — angled, thick, wise.
   const brows =
     mood === 'sad' ? (
       <>
@@ -50,6 +60,7 @@ const Sensei: React.FC<SenseiProps> = ({ mood = 'happy', size = 96 }) => {
       </>
     );
 
+  // Mouth
   const mouth =
     mood === 'sad' ? (
       <Path d="M43 68 q7 -5 14 0" stroke={ink} strokeWidth="2.8" fill="none" strokeLinecap="round" />
@@ -61,6 +72,15 @@ const Sensei: React.FC<SenseiProps> = ({ mood = 'happy', size = 96 }) => {
       <Path d="M43 65 q7 5 14 0" stroke={ink} strokeWidth="2.8" fill="none" strokeLinecap="round" />
     );
 
+  // Subtle white mustache wisps at the mouth corners — the old-master touch.
+  const mustache = (
+    <>
+      <Path d="M38 66 q-5 1 -8 5" stroke={sageWhite} strokeWidth="2.5" fill="none" strokeLinecap="round" opacity="0.7" />
+      <Path d="M62 66 q5 1 8 5" stroke={sageWhite} strokeWidth="2.5" fill="none" strokeLinecap="round" opacity="0.7" />
+    </>
+  );
+
+  // Arms — chunkier than Ishi's; raised when excited/proud, drooping when sad.
   const arms =
     mood === 'excited' || mood === 'proud' ? (
       <>
@@ -80,8 +100,8 @@ const Sensei: React.FC<SenseiProps> = ({ mood = 'happy', size = 96 }) => {
     );
 
   return (
-    <View style={{ width: size, height: size }}>
-      <Svg viewBox="0 0 100 100" width={size} height={size}>
+    <Animated.View style={[{width:size,height:size},motion]}>
+      <Svg viewBox="0 0 100 100" width={size} height={size} accessibilityLabel="Iwao the sensei boulder">
         <Defs>
           <RadialGradient id="iwao-body" cx="35%" cy="28%" r="85%">
             <Stop offset="0%" stopColor="#4a9d83" />
@@ -90,23 +110,28 @@ const Sensei: React.FC<SenseiProps> = ({ mood = 'happy', size = 96 }) => {
           </RadialGradient>
         </Defs>
         {arms}
+        {/* Dark rim — the boulder's mass */}
         <Ellipse cx="50" cy="55" rx="42" ry="37" fill="#0e211b" />
+        {/* Body — ancient jade, squashed sphere, larger than Ishi's pebble */}
         <Ellipse cx="50" cy="54" rx="40" ry="35" fill="url(#iwao-body)" />
+        {/* Age: faint speckles */}
         <Circle cx="26" cy="27" r="2" fill="#8fc7ab" opacity="0.25" />
         <Circle cx="72" cy="25" r="1.4" fill="#8fc7ab" opacity="0.25" />
         <Circle cx="30" cy="81" r="1.7" fill="#8fc7ab" opacity="0.22" />
         <Circle cx="66" cy="79" r="1.3" fill="#8fc7ab" opacity="0.22" />
+        {/* Age: one hairline crack */}
         <Path d="M85 56 l-5 6 l4 6" stroke="#123026" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" opacity="0.5" />
+        {/* Soft matte top-light — less glossy than Ishi's polished pebble */}
         <Ellipse cx="50" cy="24" rx="9" ry="5" fill="#ffffff" opacity="0.2" transform="rotate(-18 50 24)" />
         {brows}
         {eyes}
+        {/* Blush — faint and muted, less cute than Ishi */}
         <Ellipse cx="27" cy="60" rx="5.5" ry="3.4" fill="#b98a76" opacity="0.2" />
         <Ellipse cx="73" cy="60" rx="5.5" ry="3.4" fill="#b98a76" opacity="0.2" />
         {mouth}
-        <Path d="M38 66 q-5 1 -8 5" stroke={sageWhite} strokeWidth="2.5" fill="none" strokeLinecap="round" opacity="0.7" />
-        <Path d="M62 66 q5 1 8 5" stroke={sageWhite} strokeWidth="2.5" fill="none" strokeLinecap="round" opacity="0.7" />
+        {mustache}
       </Svg>
-    </View>
+    </Animated.View>
   );
 };
 

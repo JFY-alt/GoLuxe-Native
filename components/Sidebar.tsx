@@ -1,14 +1,9 @@
+import { ThemeToggle, useTheme, TextInput } from '../ui';
+import { Pressable, ScrollView, Text, View, LinearGradient, AnimatedView } from '../ui';
 import React, { useState } from 'react';
-import {
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Modal, StyleSheet } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import { LinearGradient } from 'expo-linear-gradient';
+
 import { C, SERIF } from '../theme';
 
 export type BoardTheme = 'espresso' | 'classic' | 'midnight' | 'washi' | 'maple' | 'riverstone';
@@ -83,15 +78,14 @@ const HelpModal: React.FC<{ title: string; onClose: () => void; children: React.
 }) => (
   <Modal visible transparent animationType="fade" onRequestClose={onClose}>
     <View style={styles.helpBg}>
-      <Animated.View entering={FadeIn.duration(200)} style={styles.helpCard}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
+      <AnimatedView entering={FadeIn.duration(500)} style={styles.helpCard}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{paddingHorizontal:24,paddingTop:80,paddingBottom:128,alignItems:'center'}}>
           <Text style={styles.helpTitle}>{title}</Text>
-          {children}
+          <View style={{width:'100%',maxWidth:672}}>{children}</View>
+          <Pressable onPress={onClose} style={styles.helpAction}><Text style={styles.helpActionText}>{title==='Go Fundamentals'||title==='Important Concepts'?'Close':'Understood'}</Text></Pressable>
         </ScrollView>
-        <Pressable onPress={onClose} style={styles.helpAction}>
-          <Text style={styles.helpActionText}>Understood</Text>
-        </Pressable>
-      </Animated.View>
+
+      </AnimatedView>
     </View>
   </Modal>
 );
@@ -103,17 +97,20 @@ const B: React.FC<{ children: string }> = ({ children }) => <Text style={styles.
 /* --------------------------------- sidebar --------------------------------- */
 
 const Sidebar: React.FC<SidebarProps> = (p) => {
+  const { mode: themeMode } = useTheme();
+  const visibleThemes = themeMode === 'light' ? ['washi','maple','riverstone'] : ['espresso','classic','midnight'];
+  const [customKomi, setCustomKomi] = useState('');
   const [help, setHelp] = useState<null | 'fundamentals' | 'concepts' | 'practice' | 'handicap' | 'sgf'>(null);
   const [confirmHandicap, setConfirmHandicap] = useState(false);
   if (!p.visible) return null;
 
   const stepKomi = (d: number) => {
     const v = Math.max(0, Math.round((p.komiValue + d) * 2) / 2);
-    p.setKomiValue(v);
+    p.setKomiValue(v);setCustomKomi('');
   };
 
   return (
-    <Animated.View entering={FadeIn.duration(500)} exiting={FadeOut.duration(500)} style={styles.overlay}>
+    <AnimatedView entering={FadeIn.duration(500)} exiting={FadeOut.duration(500)} style={styles.overlay}>
       {/* tap outside content to close — web: overlay onClick closes */}
       <Pressable style={StyleSheet.absoluteFill} onPress={p.onClose} />
       {/* amber wash + texture, like the web sidebar */}
@@ -144,6 +141,7 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
             </View>
           </View>
 
+          <View style={styles.section}><View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center'}}><SectionTitle>Display Mode</SectionTitle><ThemeToggle/></View><Text style={{fontFamily:SERIF,fontSize:9,color:C.white30,lineHeight:14,paddingHorizontal:4}}>{themeMode==='light'?'Washi Paper & Ink':'Noir Ink & Amber'}</Text></View>
           {/* Practice Aids */}
           <View style={styles.section}>
             <SectionTitle onHelp={() => setHelp('practice')}>Practice Aids</SectionTitle>
@@ -180,7 +178,7 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
             <SectionTitle onHelp={() => setHelp('handicap')}>Handicap & Balance</SectionTitle>
             <ToggleRow label="Handicap Stones" value={p.handicapOn} onToggle={() => setConfirmHandicap(true)} />
             {p.handicapOn && (
-              <Animated.View entering={FadeIn.duration(300)} style={styles.handicapBody}>
+              <AnimatedView entering={FadeIn.duration(300)} style={styles.handicapBody}>
                 <View style={styles.segRow}>
                   {(['fixed', 'free'] as const).map((t) => (
                     <Pressable
@@ -205,7 +203,7 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
                     <Text style={styles.stepGlyph}>+</Text>
                   </Pressable>
                 </View>
-              </Animated.View>
+              </AnimatedView>
             )}
             <View style={[styles.komiBlock, p.handicapOn && { opacity: 0.4 }]}>
               <View style={styles.komiHead}>
@@ -230,7 +228,7 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
                 ))}
               </View>
               {p.komiDirection !== 'none' && !p.handicapOn && (
-                <Animated.View entering={FadeIn.duration(300)} style={{ gap: 8 }}>
+                <AnimatedView entering={FadeIn.duration(300)} style={{ gap: 8 }}>
                   <View style={styles.segRow}>
                     {[6.5, 7.5].map((v) => (
                       <Pressable
@@ -242,16 +240,8 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
                       </Pressable>
                     ))}
                   </View>
-                  <View style={styles.stepper}>
-                    <Pressable onPress={() => stepKomi(-0.5)} style={styles.stepBtn}>
-                      <Text style={styles.stepGlyph}>−</Text>
-                    </Pressable>
-                    <Text style={styles.stepValue}>{p.komiValue} pts</Text>
-                    <Pressable onPress={() => stepKomi(0.5)} style={styles.stepBtn}>
-                      <Text style={styles.stepGlyph}>+</Text>
-                    </Pressable>
-                  </View>
-                </Animated.View>
+                  <TextInput accessibilityLabel="Custom komi" value={customKomi} onChangeText={text=>{setCustomKomi(text);const n=parseFloat(text);p.setKomiValue(Number.isFinite(n)?Math.max(0,n):0);}} placeholder="Custom" keyboardType="decimal-pad" style={{padding:12,borderWidth:1,borderColor:C.white10,borderRadius:8,color:C.amber50}} />
+                </AnimatedView>
               )}
             </View>
           </View>
@@ -260,7 +250,7 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
           <View style={styles.section}>
             <SectionTitle>Board Aesthetic</SectionTitle>
             <View style={styles.swatchGrid}>
-              {BOARD_THEMES.map((t) => (
+              {BOARD_THEMES.filter(t => visibleThemes.includes(t)).map((t) => (
                 <Pressable
                   key={t}
                   onPress={() => p.setBoardTheme(t)}
@@ -302,7 +292,7 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
       {/* handicap confirm */}
       <Modal visible={confirmHandicap} transparent animationType="fade" onRequestClose={() => setConfirmHandicap(false)}>
         <View style={styles.confirmBg}>
-          <Animated.View entering={FadeIn.duration(200)} style={styles.confirmCard}>
+          <AnimatedView entering={FadeIn.duration(200)} style={styles.confirmCard}>
             <Text style={styles.confirmTitle}>Change handicap?</Text>
             <Text style={styles.confirmDesc}>Toggling handicap stones starts a new game — the current board will be cleared.</Text>
             <View style={styles.confirmRow}>
@@ -319,7 +309,7 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
                 <Text style={styles.confirmGoldText}>{p.handicapOn ? 'Remove Handicap' : 'Start Handicap Game'}</Text>
               </Pressable>
             </View>
-          </Animated.View>
+          </AnimatedView>
         </View>
       </Modal>
 
@@ -395,7 +385,7 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
           <P>Save your current session to a file. This creates a permanent record of your strategic dialogue, which can be opened in GoLuxe or any other modern Go software.</P>
         </HelpModal>
       )}
-    </Animated.View>
+    </AnimatedView>
   );
 };
 
@@ -571,21 +561,13 @@ const styles = StyleSheet.create({
   confirmGhostText: { color: C.white30, fontSize: 10, textTransform: 'uppercase', letterSpacing: 2 },
   confirmGold: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: 'rgba(254,243,199,0.10)', borderWidth: 1, borderColor: 'rgba(253,230,138,0.20)', alignItems: 'center' },
   confirmGoldText: { color: C.amber100, fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700', textAlign: 'center' },
-  helpBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.70)', alignItems: 'center', justifyContent: 'center', padding: 20 },
-  helpCard: { backgroundColor: '#151515', borderWidth: 1, borderColor: C.white10, borderRadius: 16, padding: 24, width: '100%', maxHeight: '85%' },
-  helpTitle: { fontFamily: SERIF, fontSize: 22, color: C.amber50, textAlign: 'center', marginBottom: 20, letterSpacing: 0.5 },
-  helpAction: {
-    marginTop: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: 'rgba(254,243,199,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(253,230,138,0.20)',
-    alignItems: 'center',
-  },
-  helpActionText: { color: C.amber100, fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700' },
-  h4: { fontFamily: SERIF, fontSize: 20, color: C.amber100, marginTop: 24, marginBottom: 8, letterSpacing: -0.3 },
-  p: { fontFamily: SERIF, fontSize: 15, color: 'rgba(255,255,255,0.60)', lineHeight: 23, marginBottom: 8 },
+  helpBg: {flex:1,backgroundColor:C.bg},
+  helpCard: {flex:1,backgroundColor:C.bg,width:'100%'},
+  helpTitle: { fontFamily: SERIF, fontSize: 48, color: C.amber50, textAlign: 'center', marginBottom: 64, letterSpacing: -2.4 },
+  helpAction: {marginTop:80,paddingVertical:12,alignItems:'center'},
+  helpActionText: {fontFamily:SERIF,color:C.white30,fontSize:12,textTransform:'uppercase',letterSpacing:1.2},
+  h4: { fontFamily: SERIF, fontSize: 24, color: C.amber100, marginTop: 48, marginBottom: 16, letterSpacing: -0.3 },
+  p: { fontFamily: SERIF, fontSize: 18, color: 'rgba(255,255,255,0.60)', lineHeight: 29.25, marginBottom: 8 },
   b: { color: C.amber50, fontWeight: '400' },
   concept: { borderLeftWidth: 1, borderLeftColor: 'rgba(253,230,138,0.20)', paddingLeft: 16, marginTop: 20 },
   conceptTitle: { fontFamily: SERIF, fontSize: 17, color: C.amber50, marginBottom: 6 },
