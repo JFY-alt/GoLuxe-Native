@@ -1,0 +1,1 @@
+{"expo":{"android":{"package":"com.goluxe.app"},"assetBundlePatterns":["**/*"],"icon":"./assets/icon.png","ios":{"bundleIdentifier":"com.goluxe.app","supportsTablet":true},"name":"GoLuxe","orientation":"portrait","slug":"goluxe","splash":{"backgroundColor":"#0d0d0d"},"userInterfaceStyle":"dark","version":"1.0.0"}}

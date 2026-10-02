@@ -1,0 +1,1 @@
+{"compilerOptions":{"allowSyntheticDefaultImports":true,"esModuleInterop":true,"jsx":"react-native","module":"esnext","moduleResolution":"bundler","noImplicitAny":false,"resolveJsonModule":true,"skipLibCheck":true,"strict":false,"strictNullChecks":false,"target":"esnext"},"include":["App.tsx","index.js","logic/**/*.ts","types.ts"]}
