@@ -114,6 +114,8 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
 
   return (
     <Animated.View entering={FadeIn.duration(500)} exiting={FadeOut.duration(500)} style={styles.overlay}>
+      {/* tap outside content to close — web: overlay onClick closes */}
+      <Pressable style={StyleSheet.absoluteFill} onPress={p.onClose} />
       {/* amber wash + texture, like the web sidebar */}
       <LinearGradient
         colors={['rgba(254,243,199,0.05)', 'rgba(254,243,199,0)']}
@@ -298,9 +300,6 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
         </View>
       </ScrollView>
 
-      {/* tap outside to close */}
-      <Pressable style={styles.closeTap} onPress={p.onClose} />
-
       {/* handicap confirm */}
       <Modal visible={confirmHandicap} transparent animationType="fade" onRequestClose={() => setConfirmHandicap(false)}>
         <View style={styles.confirmBg}>
@@ -410,14 +409,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 300,
     backgroundColor: '#0d0d0d',
-  },
-  closeTap: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    width: 60,
-    height: 80,
-    zIndex: 301,
   },
   scroll: { paddingTop: 80, paddingBottom: 48, alignItems: 'center' },
   nav: { width: '100%', maxWidth: 420, paddingHorizontal: 24, gap: 40 },

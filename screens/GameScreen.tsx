@@ -61,7 +61,7 @@ interface GameScreenProps {
 const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, onExit }) => {
   const [boardSize, setBoardSize] = useState(9);
   const [ruleset, setRuleset] = useState<'japanese' | 'chinese'>('japanese');
-  const [boardTheme, setBoardTheme] = useState<BoardTheme>('espresso');
+  const [boardTheme, setBoardTheme] = useState<BoardTheme>('classic');
   const [sizeArmed, setSizeArmed] = useState<number | null>(null);
   const [board, setBoard] = useState<Intersection[][]>(() => createEmptyBoard(9));
   const [turn, setTurn] = useState<Player>('black');
@@ -614,30 +614,29 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* Top bar — web session-topbar: gear left, board-size tabs center */}
-        <View style={styles.topbar}>
-          <Pressable
-            onPress={() => setShowSidebar((v) => !v)}
-            disabled={gearDisabled}
-            style={[styles.gearBtn, gearDisabled && { opacity: 0.2 }]}
-            accessibilityLabel="Toggle Menu"
-          >
-            <GearIcon open={showSidebar} color="#ffffff" />
-          </Pressable>
-          <View style={styles.sizeRow}>
-            {BOARD_SIZES.map((s) => (
-              <Pressable key={s} onPress={() => onSizeTabPress(s)} style={styles.sizeTab}>
-                <Text style={[styles.sizeText, boardSize === s && styles.sizeTextActive]}>
-                  {s}×{s}
-                </Text>
-                {boardSize === s && <View style={styles.sizeUnderline} />}
-              </Pressable>
-            ))}
-          </View>
-          <View style={styles.topbarSpacer} />
+      {/* Top bar — web session-topbar: fixed header, gear left (z-320 floats above sidebar), board-size tabs center */}
+      <View style={styles.topbar}>
+        <Pressable
+          onPress={() => setShowSidebar((v) => !v)}
+          disabled={gearDisabled}
+          style={[styles.gearBtn, gearDisabled && { opacity: 0.2 }]}
+          accessibilityLabel="Toggle Menu"
+        >
+          <GearIcon open={showSidebar} color="#ffffff" />
+        </Pressable>
+        <View style={styles.sizeRow}>
+          {BOARD_SIZES.map((s) => (
+            <Pressable key={s} onPress={() => onSizeTabPress(s)} style={styles.sizeTab}>
+              <Text style={[styles.sizeText, boardSize === s && styles.sizeTextActive]}>
+                {s}×{s}
+              </Text>
+              {boardSize === s && <View style={styles.sizeUnderline} />}
+            </Pressable>
+          ))}
         </View>
-
+        <View style={styles.topbarSpacer} />
+      </View>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Title */}
         <Animated.View entering={FadeIn.duration(700)} style={styles.titleBlock}>
           <Text style={styles.title}>GoLuxe</Text>
@@ -852,11 +851,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 24,
+    backgroundColor: '#0d0d0d',
     borderBottomWidth: 1,
     borderBottomColor: C.white05,
-    marginBottom: 4,
+    zIndex: 310,
   },
-  gearBtn: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', opacity: 0.4 },
+  gearBtn: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', opacity: 0.4, zIndex: 320 },
   topbarSpacer: { width: 48 },
   titleBlock: { alignItems: 'center', paddingVertical: 8 },
   title: { fontFamily: SERIF, fontSize: 26, fontWeight: '600', color: C.amber50, letterSpacing: -0.5 },

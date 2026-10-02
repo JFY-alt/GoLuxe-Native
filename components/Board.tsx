@@ -150,7 +150,7 @@ const Board: React.FC<BoardProps> = ({
   countShown = 0,
   deadStones = null,
   fading = [],
-  theme = 'espresso',
+  theme = 'classic',
 }) => {
   const size = board.length;
 
