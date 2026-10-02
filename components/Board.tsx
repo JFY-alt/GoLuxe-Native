@@ -12,6 +12,8 @@ interface BoardProps {
   turn: Player;
   boardPx: number;
   interactive?: boolean;
+  /** Board theme, matching the web BoardTheme options. */
+  theme?: 'espresso' | 'classic' | 'midnight' | 'washi' | 'maple' | 'riverstone';
   /** Sensei/lesson overlays */
   targets?: Point[];
   marks?: { x: number; y: number; c?: 'black' | 'white' }[];
@@ -49,8 +51,18 @@ const Board: React.FC<BoardProps> = ({
   countBadges = null,
   countShown = 0,
   deadStones = null,
+  theme = 'espresso',
 }) => {
   const size = board.length;
+
+  const themeColors = {
+    espresso: { bg: ['#3d2b1f', '#2a1b12', '#1a110b'] as const, line: '#000000' },
+    classic: { bg: ['#e3c19a', '#d2b48c', '#b89a6f'] as const, line: '#5d4037' },
+    midnight: { bg: ['#2a2a2a', '#1a1a1a', '#0d0d0d'] as const, line: '#ffffff' },
+    washi: { bg: ['#f2ead8', '#e9dec7', '#dfd0b3'] as const, line: '#5b4d3d' },
+    maple: { bg: ['#ead8bb', '#d8bf99', '#c6a77a'] as const, line: '#4d3f2f' },
+    riverstone: { bg: ['#dde1e7', '#cfd5dd', '#bcc4cf'] as const, line: '#4a5565' },
+  }[theme];
 
   const pad = boardPx * 0.08; // web: 8% padding for 9x9
   const usable = boardPx - pad * 2;
@@ -78,10 +90,10 @@ const Board: React.FC<BoardProps> = ({
       const pos = pointXY(i);
       const span = step * (size - 1);
       els.push(
-        <View key={`v${i}`} style={[styles.gridLine, { left: pos - 0.5, top: pad, width: 1, height: span }]} />,
+        <View key={`v${i}`} style={[styles.gridLine, { backgroundColor: themeColors.line, left: pos - 0.5, top: pad, width: 1, height: span }]} />,
       );
       els.push(
-        <View key={`h${i}`} style={[styles.gridLine, { top: pos - 0.5, left: pad, height: 1, width: span }]} />,
+        <View key={`h${i}`} style={[styles.gridLine, { backgroundColor: themeColors.line, top: pos - 0.5, left: pad, height: 1, width: span }]} />,
       );
     }
     return els;
@@ -364,7 +376,7 @@ const Board: React.FC<BoardProps> = ({
   return (
     <View style={[styles.shell, { width: boardPx, height: boardPx, borderRadius: 4 }]}>
       <LinearGradient
-        colors={['#3d2b1f', '#2a1b12', '#1a110b']}
+        colors={[themeColors.bg[0], themeColors.bg[1], themeColors.bg[2]]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[StyleSheet.absoluteFill, { borderRadius: 4 }]}
@@ -381,7 +393,7 @@ const Board: React.FC<BoardProps> = ({
       {hoshi.map((p) => (
         <View
           key={`h${p.x},${p.y}`}
-          style={[styles.hoshi, { left: pointXY(p.x) - 2, top: pointXY(p.y) - 2 }]}
+          style={[styles.hoshi, { backgroundColor: themeColors.line, left: pointXY(p.x) - 2, top: pointXY(p.y) - 2 }]}
         />
       ))}
       {renderOverlays()}

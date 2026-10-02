@@ -57,6 +57,7 @@ interface GameScreenProps {
 const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, onExit }) => {
   const [boardSize, setBoardSize] = useState(9);
   const [ruleset, setRuleset] = useState<'japanese' | 'chinese'>('japanese');
+  const [boardTheme, setBoardTheme] = useState<'espresso' | 'classic' | 'midnight' | 'washi' | 'maple' | 'riverstone'>('espresso');
   const [sizeArmed, setSizeArmed] = useState<number | null>(null);
   const [board, setBoard] = useState<Intersection[][]>(() => createEmptyBoard(9));
   const [turn, setTurn] = useState<Player>('black');
@@ -310,6 +311,14 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
     showNotice(`Ruleset: ${ruleset === 'japanese' ? 'Chinese' : 'Japanese'}`);
   };
 
+  const THEMES = ['espresso', 'classic', 'midnight', 'washi', 'maple', 'riverstone'] as const;
+  const cycleTheme = () => {
+    const i = THEMES.indexOf(boardTheme);
+    const next = THEMES[(i + 1) % THEMES.length];
+    setBoardTheme(next);
+    showNotice(`Board: ${next}`);
+  };
+
   const onRefreshPress = () => {
     const b = createEmptyBoard(boardSize);
     const mainMs = (timeSettings?.mainTimeMinutes || 30) * 60000;
@@ -424,7 +433,9 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
             <Text style={styles.exitText}>‹ Menu</Text>
           </Pressable>
           <Text style={styles.title}>GoLuxe</Text>
-          <View style={styles.exitBtn} />
+          <Pressable onPress={cycleTheme} style={styles.themeBtn}>
+            <Text style={styles.themeText}>◐</Text>
+          </Pressable>
         </View>
         <View style={styles.subRow}>
           <Text style={styles.subText}>
@@ -494,6 +505,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
             showLiberties={phase === 'play'}
             hideAtari={phase === 'scoring'}
             deadStones={phase === 'scoring' ? deadStones : null}
+            theme={boardTheme}
           />
         </View>
 
@@ -598,6 +610,8 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 2 },
   exitBtn: { minWidth: 64, paddingVertical: 8 },
   exitText: { color: C.white40, fontSize: 12, fontFamily: SERIF, letterSpacing: 2, textTransform: 'uppercase' },
+  themeBtn: { minWidth: 64, paddingVertical: 8, alignItems: 'flex-end' },
+  themeText: { color: C.white40, fontSize: 18 },
   title: { fontFamily: SERIF, fontSize: 26, fontWeight: '600', color: C.amber50, letterSpacing: -0.5 },
   subRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
   subText: { color: 'rgba(255,255,255,0.30)', fontSize: 9, letterSpacing: 4, textTransform: 'uppercase', fontWeight: '500' },
