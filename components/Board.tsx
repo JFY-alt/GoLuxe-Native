@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Intersection, Point, Player } from '../types';
 import Stone from './Stone';
-import { getAtariPoints, getHoshiPoints } from '../logic/goEngine';
+import { getAllGroups, getAtariPoints, getHoshiPoints, getLiberties } from '../logic/goEngine';
 
 interface BoardProps {
   board: Intersection[][];
@@ -17,6 +17,13 @@ interface BoardProps {
   marks?: { x: number; y: number; c?: 'black' | 'white' }[];
   lines?: { axis: 'row' | 'col'; index: number }[];
   hideAtari?: boolean;
+  /** Practice aid: glowing liberty dots (amber=black, sky=white, emerald=shared). */
+  showLiberties?: boolean;
+  /** Tutorial: gold/sky wash over territory points. */
+  territoryWash?: { black: Point[]; white: Point[] } | null;
+  /** Tutorial step 7: numbered counting badges, revealed progressively. */
+  countBadges?: { x: number; y: number; c: 'b' | 'w' }[] | null;
+  countShown?: number;
 }
 
 /**
@@ -35,6 +42,10 @@ const Board: React.FC<BoardProps> = ({
   marks = [],
   lines = [],
   hideAtari = false,
+  showLiberties = false,
+  territoryWash = null,
+  countBadges = null,
+  countShown = 0,
 }) => {
   const size = board.length;
 
@@ -44,7 +55,19 @@ const Board: React.FC<BoardProps> = ({
   const pointXY = (i: number) => pad + i * step;
 
   const hoshi = useMemo(() => getHoshiPoints(size), [size]);
-  const atariPoints = useMemo(() => getAtariPoints(board), [board]);
+  const atariPoints = useMemo(() => (hideAtari ? new Set<string>() : getAtariPoints(board)), [board, hideAtari]);
+
+  const liberties = useMemo(() => {
+    if (!showLiberties) return null;
+    const bLibs = new Set<string>();
+    const wLibs = new Set<string>();
+    for (const g of getAllGroups(board)) {
+      if (g.group.length === 0 || !board[g.group[0].y][g.group[0].x]) continue;
+      const libs = getLiberties(board, g.group);
+      libs.forEach((l) => (g.color === 'black' ? bLibs : wLibs).add(l));
+    }
+    return { bLibs, wLibs };
+  }, [board, showLiberties]);
 
   const renderGrid = () => {
     const els = [];
@@ -132,6 +155,33 @@ const Board: React.FC<BoardProps> = ({
               }}
             />,
           );
+        } else if (showLiberties && liberties && !stone) {
+          // Practice aid: liberty dots (web Board.tsx)
+          const keyStr = `${x},${y}`;
+          const isB = liberties.bLibs.has(keyStr);
+          const isW = liberties.wLibs.has(keyStr);
+          if (isB || isW) {
+            const d = 6;
+            const shared = isB && isW;
+            els.push(
+              <View
+                key={`lib${key}`}
+                style={{
+                  position: 'absolute',
+                  left: cx - d / 2,
+                  top: cy - d / 2,
+                  width: d,
+                  height: d,
+                  borderRadius: d / 2,
+                  backgroundColor: shared ? '#34d399' : isB ? '#fde68a' : '#38bdf8',
+                  zIndex: 10,
+                  shadowColor: shared ? '#34d399' : isB ? '#fbbf24' : '#38bdf8',
+                  shadowOpacity: 0.8,
+                  shadowRadius: 6,
+                }}
+              />,
+            );
+          }
         }
       }
     }
@@ -220,6 +270,79 @@ const Board: React.FC<BoardProps> = ({
         );
       }
     });
+    // Tutorial territory wash (gold for black's, sky for white's)
+    if (territoryWash) {
+      const sq = step;
+      territoryWash.black.forEach((p, i) => {
+        els.push(
+          <View
+            key={`twb${i}`}
+            style={{
+              position: 'absolute',
+              left: pointXY(p.x) - sq / 2,
+              top: pointXY(p.y) - sq / 2,
+              width: sq,
+              height: sq,
+              borderRadius: 3,
+              backgroundColor: 'rgba(252,211,77,0.20)',
+              zIndex: 8,
+            }}
+          />,
+        );
+      });
+      territoryWash.white.forEach((p, i) => {
+        els.push(
+          <View
+            key={`tww${i}`}
+            style={{
+              position: 'absolute',
+              left: pointXY(p.x) - sq / 2,
+              top: pointXY(p.y) - sq / 2,
+              width: sq,
+              height: sq,
+              borderRadius: 3,
+              backgroundColor: 'rgba(186,230,253,0.20)',
+              zIndex: 8,
+            }}
+          />,
+        );
+      });
+    }
+    // Tutorial counting badges (numbered, revealed progressively)
+    if (countBadges) {
+      let bn = 0;
+      let wn = 0;
+      const totalShown = Math.min(countShown, countBadges.length);
+      countBadges.slice(0, totalShown).forEach((p, i) => {
+        const n = p.c === 'b' ? ++bn : ++wn;
+        const isLatest = i === totalShown - 1;
+        const d = 20;
+        els.push(
+          <View
+            key={`cb${i}`}
+            style={{
+              position: 'absolute',
+              left: pointXY(p.x) - d / 2,
+              top: pointXY(p.y) - d / 2,
+              width: d,
+              height: d,
+              borderRadius: d / 2,
+              backgroundColor: p.c === 'b' ? '#fcd34d' : '#bae6fd',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 26,
+              borderWidth: isLatest ? 2 : 0,
+              borderColor: 'rgba(255,255,255,0.70)',
+              shadowColor: '#000',
+              shadowOpacity: 0.4,
+              shadowRadius: 4,
+            }}
+          >
+            <Text style={{ fontSize: 10, fontWeight: '700', color: '#000' }}>{n}</Text>
+          </View>,
+        );
+      });
+    }
     return els;
   };
 

@@ -7,6 +7,7 @@ import PassAndPlaySubMenu from './screens/PassAndPlaySubMenu';
 import WhatIsGoMenu from './screens/WhatIsGoMenu';
 import StudyMenu from './screens/StudyMenu';
 import SenseiScreen from './screens/SenseiScreen';
+import TutorialScreen from './screens/TutorialScreen';
 import GameScreen from './screens/GameScreen';
 import { C } from './theme';
 
@@ -83,6 +84,13 @@ export default function App() {
       )}
       {screen === 'sensei' && (
         <SenseiScreen key={senseiTopic} topic={senseiTopic} onExit={() => setScreen('study')} />
+      )}
+      {screen === 'howToPlay' && (
+        <TutorialScreen
+          onExit={() => setScreen('menu')}
+          onFirstGame={() => startGame('ai', { userColor: 'black', difficulty: 'beginner' })}
+          onStudy={() => setScreen('study')}
+        />
       )}
       {screen === 'game' && (
         <GameScreen key={gameKey} mode={mode} aiConfig={aiConfig} onExit={() => setScreen('menu')} />

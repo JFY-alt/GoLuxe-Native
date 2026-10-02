@@ -321,6 +321,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, onExit }) => {
             turn={turn}
             boardPx={BOARD_PX}
             interactive={phase === 'play' && !(mode === 'ai' && aiConfig && (turn !== aiConfig.userColor || aiThinking))}
+            showLiberties
           />
         </View>
 

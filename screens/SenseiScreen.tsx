@@ -11,6 +11,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import Board from '../components/Board';
 import Sensei, { SenseiMood } from '../components/Sensei';
+import { renderMarkup } from '../components/Markup';
 import { SENSEI_LESSONS, SenseiBeat, parseSenseiBoard } from '../data/senseiLessons';
 import { checkCaptures, createEmptyBoard, getBoardString, isSelfCapture } from '../logic/goEngine';
 import { Intersection, Point } from '../types';
@@ -25,25 +26,8 @@ interface SenseiScreenProps {
   onExit: () => void;
 }
 
-/** Mini-markup: **bold** -> amber, *italic* -> italic. */
-const renderMarkup = (text: string): React.ReactNode => {
-  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
-  return (
-    <Text>
-      {parts.map((part, i) => {
-        if (part.length > 4 && part.startsWith('**') && part.endsWith('**'))
-          return (
-            <Text key={i} style={{ color: '#fde68a', fontWeight: '700' }}>
-              {part.slice(2, -2)}
-            </Text>
-          );
-        if (part.length > 2 && part.startsWith('*') && part.endsWith('*'))
-          return <Text key={i} style={{ fontStyle: 'italic' }}>{part.slice(1, -1)}</Text>;
-        return <Text key={i}>{part}</Text>;
-      })}
-    </Text>
-  );
-};
+/** Mini-markup: **bold** -> amber, *italic* -> italic (shared). */
+const renderSenseiText = renderMarkup;
 
 /**
  * Study Room lesson engine, 1:1 with the web isSensei GameSession:
