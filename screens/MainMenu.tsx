@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { C, SERIF } from '../theme';
 
 interface MainMenuProps {
@@ -42,15 +43,25 @@ const MainMenu: React.FC<MainMenuProps> = ({ onPlay, onWhatIsGo, onHowToPlay, on
       />
 
       <View style={styles.center}>
-        <View style={styles.titleBlock}>
+        {/* Web home: staggered fade+rise entrance (delays mirror the web's 150–800ms) */}
+        <Animated.View entering={FadeIn.duration(700).delay(150)} style={styles.titleBlock}>
           <Text style={styles.title}>GoLuxe</Text>
           <Text style={styles.subtitle}>Strategic Purity</Text>
-        </View>
+        </Animated.View>
         <View style={styles.buttons}>
-          {btns.map((b) => (
-            <Pressable key={b.label} onPress={b.fn} style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}>
-              <Text style={styles.btnText}>{b.label}</Text>
-            </Pressable>
+          {btns.map((b, i) => (
+            <Animated.View key={b.label} entering={FadeIn.duration(700).delay(400 + i * 130)}>
+              <Pressable
+                onPress={b.fn}
+                style={({ pressed }) => [
+                  styles.btn,
+                  pressed && styles.btnPressed,
+                  pressed && { transform: [{ scale: 0.95 }] },
+                ]}
+              >
+                <Text style={styles.btnText}>{b.label}</Text>
+              </Pressable>
+            </Animated.View>
           ))}
         </View>
       </View>

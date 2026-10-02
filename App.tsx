@@ -10,6 +10,7 @@ import StudyMenu from './screens/StudyMenu';
 import SenseiScreen from './screens/SenseiScreen';
 import TutorialScreen from './screens/TutorialScreen';
 import GameScreen from './screens/GameScreen';
+import { ScreenFade } from './components/ScreenFade';
 import { C } from './theme';
 import { TimeSettings } from './types';
 
@@ -49,59 +50,77 @@ export default function App() {
   return (
     <SafeAreaView style={styles.root}>
       {screen === 'menu' && (
-        <MainMenu
-          onPlay={() => setScreen('modes')}
-          onWhatIsGo={() => setScreen('whatIsGo')}
-          onHowToPlay={() => setScreen('howToPlay')}
-          onStudy={() => setScreen('study')}
-        />
+        <ScreenFade key="menu">
+          <MainMenu
+            onPlay={() => setScreen('modes')}
+            onWhatIsGo={() => setScreen('whatIsGo')}
+            onHowToPlay={() => setScreen('howToPlay')}
+            onStudy={() => setScreen('study')}
+          />
+        </ScreenFade>
       )}
       {screen === 'modes' && (
-        <GameModeMenu onSelectMode={handleSelectMode} onBack={() => setScreen('menu')} />
+        <ScreenFade key="modes">
+          <GameModeMenu onSelectMode={handleSelectMode} onBack={() => setScreen('menu')} />
+        </ScreenFade>
       )}
       {screen === 'aiSetup' && (
-        <AiSetupMenu
-          onStart={(cfg) => startGame('ai', cfg)}
-          onBack={() => setScreen('modes')}
-        />
+        <ScreenFade key="aiSetup">
+          <AiSetupMenu
+            onStart={(cfg) => startGame('ai', cfg)}
+            onBack={() => setScreen('modes')}
+          />
+        </ScreenFade>
       )}
       {screen === 'passPlaySub' && (
-        <PassAndPlaySubMenu
-          onSelectSubMode={(sub) => (sub === 'timed' ? setScreen('timedSetup') : startGame('2p', null))}
-          onBack={() => setScreen('modes')}
-        />
+        <ScreenFade key="passPlaySub">
+          <PassAndPlaySubMenu
+            onSelectSubMode={(sub) => (sub === 'timed' ? setScreen('timedSetup') : startGame('2p', null))}
+            onBack={() => setScreen('modes')}
+          />
+        </ScreenFade>
       )}
       {screen === 'timedSetup' && (
-        <TimedSetupMenu
-          onStart={(settings) => startGame('2p', null, settings)}
-          onBack={() => setScreen('passPlaySub')}
-        />
+        <ScreenFade key="timedSetup">
+          <TimedSetupMenu
+            onStart={(settings) => startGame('2p', null, settings)}
+            onBack={() => setScreen('passPlaySub')}
+          />
+        </ScreenFade>
       )}
       {screen === 'whatIsGo' && (
-        <WhatIsGoMenu
-          onBack={() => setScreen('menu')}
-          onBegin={() => setScreen('modes')}
-          onHowToPlay={() => setScreen('howToPlay')}
-        />
+        <ScreenFade key="whatIsGo">
+          <WhatIsGoMenu
+            onBack={() => setScreen('menu')}
+            onBegin={() => setScreen('modes')}
+            onHowToPlay={() => setScreen('howToPlay')}
+          />
+        </ScreenFade>
       )}
       {screen === 'study' && (
-        <StudyMenu
-          onSelect={(topic) => {
-            setSenseiTopic(topic);
-            setScreen('sensei');
-          }}
-          onBack={() => setScreen('menu')}
-        />
+        <ScreenFade key="study">
+          <StudyMenu
+            onSelect={(topic) => {
+              setSenseiTopic(topic);
+              setScreen('sensei');
+            }}
+            onBack={() => setScreen('menu')}
+          />
+        </ScreenFade>
       )}
       {screen === 'sensei' && (
-        <SenseiScreen key={senseiTopic} topic={senseiTopic} onExit={() => setScreen('study')} />
+        <ScreenFade key={`sensei-${senseiTopic}`}>
+          <SenseiScreen key={senseiTopic} topic={senseiTopic} onExit={() => setScreen('study')} />
+        </ScreenFade>
       )}
       {screen === 'howToPlay' && (
-        <TutorialScreen
-          onExit={() => setScreen('menu')}
-          onFirstGame={() => startGame('ai', { userColor: 'black', difficulty: 'beginner' })}
-          onStudy={() => setScreen('study')}
-        />
+        <ScreenFade key="howToPlay">
+          <TutorialScreen
+            onExit={() => setScreen('menu')}
+            onFirstGame={() => startGame('ai', { userColor: 'black', difficulty: 'beginner' })}
+            onStudy={() => setScreen('study')}
+          />
+        </ScreenFade>
       )}
       {screen === 'game' && (
         <GameScreen key={gameKey} mode={mode} aiConfig={aiConfig} timeSettings={timeSettings} onExit={() => setScreen('menu')} />

@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { SlideInRight, ZoomIn } from 'react-native-reanimated';
 import Board from '../components/Board';
 import Ishi, { IshiMood } from '../components/Ishi';
 import { renderMarkup } from '../components/Markup';
@@ -548,7 +549,7 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
               <View style={styles.progressTrack}>
                 <View style={[styles.progressFill, { width: `${((tutStep + 1) / 12) * 100}%` }]} />
               </View>
-              <View style={styles.cardBody}>
+              <Animated.View key={`${tutStep}-${tutPhase}`} entering={SlideInRight.duration(280)} style={styles.cardBody}>
                 <Text style={styles.cardText}>{renderMarkup(card.text)}</Text>
                 {tutNudge && <Text style={styles.nudge}>{tutNudge}</Text>}
                 {card.chips && (
@@ -562,7 +563,7 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
                     ))}
                   </View>
                 )}
-              </View>
+              </Animated.View>
               <View style={styles.btnRow}>
                 {tutStep > 0 && tutStep < 11 && (
                   <Pressable onPress={() => setupTutStep(tutStep - 1)} style={styles.backCardBtn}>
@@ -580,10 +581,10 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
         )}
       </ScrollView>
 
-      {/* Graduation modal */}
+      {/* Graduation modal — web: animate-in zoom-in duration-300 */}
       <Modal visible={tutStep === 11} transparent animationType="fade">
         <View style={styles.modalBg}>
-          <View style={styles.modalCard}>
+          <Animated.View entering={ZoomIn.duration(300)} style={styles.modalCard}>
             <View style={{ alignItems: 'center', marginBottom: 12 }}>
               <Ishi mood="proud" size={76} />
             </View>
@@ -608,7 +609,7 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
                 <Text style={styles.modalBackText}>Back to menu</Text>
               </Pressable>
             </View>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
 

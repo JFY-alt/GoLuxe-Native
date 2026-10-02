@@ -1,9 +1,25 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Animated, {
+  Easing,
+  FadeOut,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { Intersection, Point, Player } from '../types';
 import Stone from './Stone';
-import { getAllGroups, getAtariPoints, getHoshiPoints, getLiberties } from '../logic/goEngine';
+import {
+  getAllGroups,
+  getAtariPoints,
+  getHoshiPoints,
+  getImmortalEyePoints,
+  getImmortalPoints,
+  getLiberties,
+} from '../logic/goEngine';
 
 interface BoardProps {
   board: Intersection[][];
@@ -21,6 +37,8 @@ interface BoardProps {
   hideAtari?: boolean;
   /** Practice aid: glowing liberty dots (amber=black, sky=white, emerald=shared). */
   showLiberties?: boolean;
+  /** Practice aid: purple life-status rings (web Board.tsx). */
+  showLifeStatus?: boolean;
   /** Tutorial: gold/sky wash over territory points. */
   territoryWash?: { black: Point[]; white: Point[] } | null;
   /** Tutorial step 7: numbered counting badges, revealed progressively. */
@@ -28,12 +46,91 @@ interface BoardProps {
   countShown?: number;
   /** Scoring mode: stones marked dead render dimmed with a red X. */
   deadStones?: Set<string> | null;
+  /** Stones currently fading out after capture. */
+  fading?: { x: number; y: number; color: Player; key: string }[];
 }
 
+/* ------------------------- small animated pieces ------------------------- */
+
+/** Pulsing red atari dot — web: animate-pulse duration-[1.5s]. */
+const AtariDot: React.FC<{ d: number }> = ({ d }) => {
+  const o = useSharedValue(1);
+  useEffect(() => {
+    o.value = withRepeat(withTiming(0.35, { duration: 750, easing: Easing.inOut(Easing.ease) }), -1, true);
+  }, [o]);
+  const s = useAnimatedStyle(() => ({ opacity: o.value }));
+  return (
+    <Animated.View
+      style={[
+        {
+          width: d,
+          height: d,
+          borderRadius: d / 2,
+          backgroundColor: 'rgba(220,38,38,0.80)',
+          shadowColor: '#dc2626',
+          shadowOpacity: 0.6,
+          shadowRadius: 8,
+        },
+        s,
+      ]}
+    />
+  );
+};
+
+/** Amber tap-target ping ring — web: animate-ping on the outer halo. */
+const TargetPing: React.FC = () => {
+  const p = useSharedValue(0);
+  useEffect(() => {
+    p.value = withRepeat(withTiming(1, { duration: 1500, easing: Easing.out(Easing.cubic) }), -1, false);
+  }, [p]);
+  const s = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 + p.value * 0.9 }],
+    opacity: 0.4 * (1 - p.value),
+  }));
+  return (
+    <Animated.View
+      style={[
+        {
+          position: 'absolute',
+          left: -17,
+          top: -17,
+          width: 34,
+          height: 34,
+          borderRadius: 17,
+          backgroundColor: '#fcd34d',
+        },
+        s,
+      ]}
+    />
+  );
+};
+
+/** Stone wrapper that pops (scale 0.6 → 1 with spring overshoot) whenever popKey changes. */
+const PopStone: React.FC<{ color: Player; size: number; popKey: string | null }> = ({ color, size, popKey }) => {
+  const scale = useSharedValue(1);
+  useEffect(() => {
+    if (popKey) {
+      scale.value = 0.6;
+      scale.value = withSpring(1, { damping: 11, stiffness: 380 });
+    }
+  }, [popKey, scale]);
+  const s = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  if (!popKey) return <Stone color={color} size={size} />;
+  return (
+    <Animated.View style={s}>
+      <Stone color={color} size={size} />
+    </Animated.View>
+  );
+};
+
+/* --------------------------------- board --------------------------------- */
+
 /**
- * Espresso-theme board matching the web Board.tsx default theme:
- * dark wood gradient, black grid lines, hoshi points, red atari dots on
- * empty atari points, amber last-move marker.
+ * Go board matching the web Board.tsx:
+ * per-size padding (9:8% / 13:6% / 19:4%), 0.3%-width grid lines at 50%
+ * opacity, hoshi dots (1.2% diameter, 70% opacity), stone diameter 94% of
+ * step, radial-gradient stones, last-move marker, atari pulse, liberty dots,
+ * life-status rings.
  */
 const Board: React.FC<BoardProps> = ({
   board,
@@ -47,10 +144,12 @@ const Board: React.FC<BoardProps> = ({
   lines = [],
   hideAtari = false,
   showLiberties = false,
+  showLifeStatus = false,
   territoryWash = null,
   countBadges = null,
   countShown = 0,
   deadStones = null,
+  fading = [],
   theme = 'espresso',
 }) => {
   const size = board.length;
@@ -64,13 +163,21 @@ const Board: React.FC<BoardProps> = ({
     riverstone: { bg: ['#dde1e7', '#cfd5dd', '#bcc4cf'] as const, line: '#4a5565' },
   }[theme];
 
-  const pad = boardPx * 0.08; // web: 8% padding for 9x9
+  // Web: margins shrink as the board grows (8% / 6% / 4%).
+  const padFrac = size === 9 ? 0.08 : size === 13 ? 0.06 : 0.04;
+  const pad = boardPx * padFrac;
   const usable = boardPx - pad * 2;
   const step = usable / (size - 1);
   const pointXY = (i: number) => pad + i * step;
+  // Web: strokeWidth 0.3 in a 100-unit viewBox = 0.3% of board width.
+  const lineW = Math.max(1, boardPx * 0.003);
+  // Web: hoshi r=0.6 in 100-unit viewBox → 1.2% diameter.
+  const hoshiD = Math.max(3, boardPx * 0.012);
 
   const hoshi = useMemo(() => getHoshiPoints(size), [size]);
   const atariPoints = useMemo(() => (hideAtari ? new Set<string>() : getAtariPoints(board)), [board, hideAtari]);
+  const immortalPoints = useMemo(() => (showLifeStatus ? getImmortalPoints(board) : new Set<string>()), [board, showLifeStatus]);
+  const immortalEyes = useMemo(() => (showLifeStatus ? getImmortalEyePoints(board) : new Set<string>()), [board, showLifeStatus]);
 
   const liberties = useMemo(() => {
     if (!showLiberties) return null;
@@ -90,10 +197,10 @@ const Board: React.FC<BoardProps> = ({
       const pos = pointXY(i);
       const span = step * (size - 1);
       els.push(
-        <View key={`v${i}`} style={[styles.gridLine, { backgroundColor: themeColors.line, left: pos - 0.5, top: pad, width: 1, height: span }]} />,
+        <View key={`v${i}`} style={[styles.gridLine, { backgroundColor: themeColors.line, left: pos - lineW / 2, top: pad, width: lineW, height: span }]} />,
       );
       els.push(
-        <View key={`h${i}`} style={[styles.gridLine, { backgroundColor: themeColors.line, top: pos - 0.5, left: pad, height: 1, width: span }]} />,
+        <View key={`h${i}`} style={[styles.gridLine, { backgroundColor: themeColors.line, top: pos - lineW / 2, left: pad, height: lineW, width: span }]} />,
       );
     }
     return els;
@@ -108,6 +215,7 @@ const Board: React.FC<BoardProps> = ({
         const cy = pointXY(y);
         const key = `${x},${y}`;
         const stone = board[y][x];
+        const isLast = lastMove?.x === x && lastMove?.y === y;
 
         // Invisible generous touch target over every intersection
         els.push(
@@ -127,6 +235,7 @@ const Board: React.FC<BoardProps> = ({
 
         if (stone) {
           const isDead = !!deadStones?.has(key);
+          const isImmortal = showLifeStatus && immortalPoints.has(key);
           els.push(
             <View
               key={key}
@@ -138,13 +247,30 @@ const Board: React.FC<BoardProps> = ({
                 opacity: isDead ? 0.4 : 1,
               }}
             >
-              <Stone color={stone} size={stoneD} />
+              {isImmortal && (
+                <View
+                  style={{
+                    position: 'absolute',
+                    left: -stoneD * 0.1,
+                    top: -stoneD * 0.1,
+                    width: stoneD * 1.2,
+                    height: stoneD * 1.2,
+                    borderRadius: stoneD * 0.6,
+                    borderWidth: 2,
+                    borderColor: 'rgba(192,132,252,0.40)',
+                    shadowColor: '#c084fc',
+                    shadowOpacity: 0.3,
+                    shadowRadius: 8,
+                  }}
+                />
+              )}
+              <PopStone color={stone} size={stoneD} popKey={isLast && !isDead ? key : null} />
               {isDead && (
                 <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
                   <Text style={{ color: 'rgba(239,68,68,0.85)', fontSize: stoneD * 0.55, fontWeight: '700' }}>✕</Text>
                 </View>
               )}
-              {!isDead && lastMove?.x === x && lastMove?.y === y && (
+              {!isDead && isLast && (
                 <View
                   style={[
                     styles.lastMove,
@@ -154,6 +280,8 @@ const Board: React.FC<BoardProps> = ({
                       width: stoneD * 0.24,
                       height: stoneD * 0.24,
                       borderRadius: stoneD * 0.12,
+                      borderWidth: 2,
+                      borderColor: stone === 'black' ? 'rgba(255,255,255,0.20)' : 'rgba(0,0,0,0.20)',
                       backgroundColor: stone === 'black' ? 'rgba(255,255,255,0.40)' : 'rgba(0,0,0,0.40)',
                     },
                   ]}
@@ -163,7 +291,7 @@ const Board: React.FC<BoardProps> = ({
           );
         } else if (!hideAtari && atariPoints.has(key)) {
           // Web renders a pulsing red dot on empty atari points
-          const d = 10;
+          const d = Math.max(8, boardPx * 0.028);
           els.push(
             <View
               key={key}
@@ -171,16 +299,11 @@ const Board: React.FC<BoardProps> = ({
                 position: 'absolute',
                 left: cx - d / 2,
                 top: cy - d / 2,
-                width: d,
-                height: d,
-                borderRadius: d / 2,
-                backgroundColor: 'rgba(220,38,38,0.85)',
                 zIndex: 10,
-                shadowColor: '#dc2626',
-                shadowOpacity: 0.6,
-                shadowRadius: 6,
               }}
-            />,
+            >
+              <AtariDot d={d} />
+            </View>,
           );
         } else if (showLiberties && liberties && !stone) {
           // Practice aid: liberty dots (web Board.tsx)
@@ -209,31 +332,62 @@ const Board: React.FC<BoardProps> = ({
               />,
             );
           }
+        } else if (showLifeStatus && immortalEyes.has(key)) {
+          // Purple eye rings on vital points — web Board.tsx
+          const d = Math.max(12, step * 0.5);
+          els.push(
+            <View
+              key={`eye${key}`}
+              style={{
+                position: 'absolute',
+                left: cx - d / 2,
+                top: cy - d / 2,
+                width: d,
+                height: d,
+                borderRadius: d / 2,
+                borderWidth: 2,
+                borderColor: 'rgba(192,132,252,0.60)',
+                backgroundColor: 'rgba(192,132,252,0.10)',
+                zIndex: 10,
+                shadowColor: '#c084fc',
+                shadowOpacity: 0.5,
+                shadowRadius: 8,
+              }}
+            />,
+          );
         }
       }
+    }
+    // Captured stones fading out (removed from board state, animated away)
+    for (const f of fading) {
+      const stoneD = step * 0.94;
+      els.push(
+        <Animated.View
+          key={f.key}
+          exiting={FadeOut.duration(300)}
+          style={{
+            position: 'absolute',
+            left: pointXY(f.x) - stoneD / 2,
+            top: pointXY(f.y) - stoneD / 2,
+            zIndex: 20,
+          }}
+        >
+          <Stone color={f.color} size={stoneD} />
+        </Animated.View>,
+      );
     }
     return els;
   };
 
   const renderOverlays = () => {
     const els: React.ReactNode[] = [];
-    // Amber pulsing tap targets
+    // Amber pulsing tap targets (web: animate-ping halo + solid core)
     targets.forEach((t, i) => {
       const cx = pointXY(t.x);
       const cy = pointXY(t.y);
       els.push(
         <View key={`tg${i}`} style={{ position: 'absolute', left: cx, top: cy, width: 0, height: 0, zIndex: 25 }}>
-          <View
-            style={{
-              position: 'absolute',
-              left: -17,
-              top: -17,
-              width: 34,
-              height: 34,
-              borderRadius: 17,
-              backgroundColor: 'rgba(252,211,77,0.40)',
-            }}
-          />
+          <TargetPing />
           <View
             style={{
               position: 'absolute',
@@ -374,26 +528,35 @@ const Board: React.FC<BoardProps> = ({
   };
 
   return (
-    <View style={[styles.shell, { width: boardPx, height: boardPx, borderRadius: 4 }]}>
+    <View style={[styles.shell, { width: boardPx, height: boardPx, borderRadius: 2 }]}>
       <LinearGradient
         colors={[themeColors.bg[0], themeColors.bg[1], themeColors.bg[2]]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[StyleSheet.absoluteFill, { borderRadius: 4 }]}
+        style={[StyleSheet.absoluteFill, { borderRadius: 2 }]}
       />
-      {/* inner vignette */}
+      {/* inner vignette — web: inset 0 0 120px rgba(0,0,0,0.7) */}
       <LinearGradient
         colors={['rgba(0,0,0,0.35)', 'rgba(0,0,0,0)', 'rgba(0,0,0,0.35)']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[StyleSheet.absoluteFill, { borderRadius: 4 }]}
+        style={[StyleSheet.absoluteFill, { borderRadius: 2 }]}
         pointerEvents="none"
       />
       {renderGrid()}
       {hoshi.map((p) => (
         <View
           key={`h${p.x},${p.y}`}
-          style={[styles.hoshi, { backgroundColor: themeColors.line, left: pointXY(p.x) - 2, top: pointXY(p.y) - 2 }]}
+          style={{
+            position: 'absolute',
+            width: hoshiD,
+            height: hoshiD,
+            borderRadius: hoshiD / 2,
+            backgroundColor: themeColors.line,
+            opacity: 0.7,
+            left: pointXY(p.x) - hoshiD / 2,
+            top: pointXY(p.y) - hoshiD / 2,
+          }}
         />
       ))}
       {renderOverlays()}
@@ -410,22 +573,13 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.06)',
     shadowColor: '#000',
     shadowOpacity: 0.8,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
+    shadowRadius: 30,
+    shadowOffset: { width: 0, height: 25 },
     elevation: 12,
   },
   gridLine: {
     position: 'absolute',
-    backgroundColor: '#000000',
     opacity: 0.5,
-  },
-  hoshi: {
-    position: 'absolute',
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#000000',
-    opacity: 0.7,
   },
   lastMove: {
     position: 'absolute',

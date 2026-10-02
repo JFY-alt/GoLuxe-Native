@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { SlideInRight } from 'react-native-reanimated';
 import Board from '../components/Board';
 import Sensei, { SenseiMood } from '../components/Sensei';
 import { renderMarkup } from '../components/Markup';
@@ -215,7 +216,8 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
             <View style={styles.progressTrack}>
               <View style={[styles.progressFill, { width: `${((beatIdx + 1) / lesson.beats.length) * 100}%` }]} />
             </View>
-            <View style={styles.cardBody}>
+            {/* Beat text transitions: fade+slide on every beat change */}
+            <Animated.View key={beatIdx} entering={SlideInRight.duration(280)} style={styles.cardBody}>
               <Text style={styles.cardText}>{renderMarkup(beat.text)}</Text>
               {nudge && <Text style={styles.nudge}>{nudge}</Text>}
               {beat.chips && (
@@ -229,7 +231,7 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
                   ))}
                 </View>
               )}
-            </View>
+            </Animated.View>
             <View style={styles.btnRow}>
               {beatIdx > 0 && (
                 <Pressable onPress={() => setupBeat(beatIdx - 1)} style={styles.backCardBtn}>

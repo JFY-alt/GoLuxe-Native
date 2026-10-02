@@ -4,20 +4,25 @@ import {
   Modal,
   Pressable,
   ScrollView,
+  Share,
   StatusBar,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { FadeIn, FadeOut, ZoomIn } from 'react-native-reanimated';
+import * as DocumentPicker from 'expo-document-picker';
 import Board from '../components/Board';
-import Stone from '../components/Stone';
+import GearIcon from '../components/GearIcon';
+import Sidebar, { BoardTheme, HandicapType, KomiDirection } from '../components/Sidebar';
 import {
   calculateScores,
   checkCaptures,
   createEmptyBoard,
   findGroup,
   getBoardString,
+  getHoshiPoints,
   isSelfCapture,
 } from '../logic/goEngine';
 import { getBestMove } from '../logic/simpleAi';
@@ -27,7 +32,6 @@ import { clockAfterMove, clockDisplay, createClock, tickClock } from '../logic/c
 import { PlayerClock, TimeSettings } from '../types';
 import { C, SERIF } from '../theme';
 
-const KOMI = 7.5;
 const AI_DELAY_MS = 750;
 
 const { width: SW, height: SH } = Dimensions.get('window');
@@ -57,7 +61,7 @@ interface GameScreenProps {
 const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, onExit }) => {
   const [boardSize, setBoardSize] = useState(9);
   const [ruleset, setRuleset] = useState<'japanese' | 'chinese'>('japanese');
-  const [boardTheme, setBoardTheme] = useState<'espresso' | 'classic' | 'midnight' | 'washi' | 'maple' | 'riverstone'>('espresso');
+  const [boardTheme, setBoardTheme] = useState<BoardTheme>('espresso');
   const [sizeArmed, setSizeArmed] = useState<number | null>(null);
   const [board, setBoard] = useState<Intersection[][]>(() => createEmptyBoard(9));
   const [turn, setTurn] = useState<Player>('black');
@@ -75,7 +79,22 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
   const [passNotice, setPassNotice] = useState<string | null>(null);
   const [aiThinking, setAiThinking] = useState(false);
   const [resignArmed, setResignArmed] = useState(false);
+  const [isExiting, setIsExiting] = useState(false);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sidebar / settings (web GameSession parity)
+  const [showSidebar, setShowSidebar] = useState(false);
+  const [showLiberties, setShowLiberties] = useState(true);
+  const [showAtariWarning, setShowAtariWarning] = useState(true);
+  const [showLifeStatus, setShowLifeStatus] = useState(true);
+  const [handicapOn, setHandicapOn] = useState(false);
+  const [handicapType, setHandicapType] = useState<HandicapType>('fixed');
+  const [handicapCount, setHandicapCount] = useState(1);
+  const [komiDirection, setKomiDirection] = useState<KomiDirection>('standard');
+  const [komiValue, setKomiValue] = useState(7.5);
+  const [placementsLeft, setPlacementsLeft] = useState(0);
+  const [fading, setFading] = useState<{ x: number; y: number; color: Player; key: string }[]>([]);
+  const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Timed mode clocks
   const [blackClock, setBlackClock] = useState<PlayerClock>(() =>
@@ -141,8 +160,23 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
     player: Player,
     curBoard: Intersection[][],
     curHistory: string[],
+    hcLeft: number,
+    hcType: HandicapType,
+    curSize: number,
   ) => {
     if (curBoard[p.y][p.x]) return { valid: false as const, reason: 'Occupied' };
+    if (hcLeft > 0) {
+      // Handicap placement: no capture/ko checks; fixed type requires star points.
+      if (hcType === 'fixed') {
+        const stars = getHoshiPoints(curSize);
+        if (!stars.some((s) => s.x === p.x && s.y === p.y)) {
+          return { valid: false as const, reason: 'Fixed handicap must be on star points' };
+        }
+      }
+      const newBoard = curBoard.map((row) => [...row]);
+      newBoard[p.y][p.x] = player;
+      return { valid: true as const, newBoard, captureCount: 0 };
+    }
     if (isSelfCapture(curBoard, p, player)) return { valid: false as const, reason: 'Suicide move not allowed' };
     const temp = curBoard.map((row) => [...row]);
     temp[p.y][p.x] = player;
@@ -156,21 +190,40 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
 
   const applyMove = (p: Point, player: Player, st?: Snapshot): boolean => {
     const s = st || snapshot();
-    const { valid, reason, newBoard, captureCount } = validateMove(p, player, s.board, history);
+    const { valid, reason, newBoard, captureCount } = validateMove(p, player, s.board, history, placementsLeft, handicapType, boardSize);
     if (!valid || !newBoard || captureCount === undefined) {
       if (player === 'black' || mode === '2p') showNotice(reason || 'Illegal move');
       return false;
     }
     if (!st) setSnapshots((prev) => [...prev, s]);
+    // Capture fade: stones present before but gone after, animate them out.
+    if (captureCount > 0) {
+      const gone: { x: number; y: number; color: Player; key: string }[] = [];
+      for (let y = 0; y < boardSize; y++) {
+        for (let x = 0; x < boardSize; x++) {
+          if (s.board[y][x] && !newBoard[y][x]) {
+            gone.push({ x, y, color: s.board[y][x] as Player, key: `${x},${y}-${Date.now()}` });
+          }
+        }
+      }
+      if (gone.length > 0) {
+        setFading(gone);
+        if (fadeTimer.current) clearTimeout(fadeTimer.current);
+        fadeTimer.current = setTimeout(() => setFading([]), 320);
+      }
+    }
     setBoard(newBoard);
     setCaptures({ ...s.captures, [player]: s.captures[player] + captureCount });
     setHistory((h) => [...h, getBoardString(newBoard)]);
     setLastMove(p);
-    setTurn(player === 'black' ? 'white' : 'black');
+    // During handicap placement Black keeps placing; otherwise the turn flips.
+    const stillHandicapping = placementsLeft > 1;
+    setPlacementsLeft((n) => (n > 0 ? n - 1 : 0));
+    setTurn(stillHandicapping ? 'black' : player === 'black' ? 'white' : 'black');
     setPasses(0);
     setPassNotice(null);
     setResignArmed(false);
-    bumpClockAfterMove(player);
+    if (!stillHandicapping) bumpClockAfterMove(player);
     return true;
   };
 
@@ -214,7 +267,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
   };
 
   const finalizeScore = () => {
-    const sc = calculateScores(board, captures, KOMI, 0, deadStones, ruleset, new Set(), true, 0, 0, true);
+    const sc = calculateScores(board, captures, komiForScores.komi, komiForScores.reverseKomi, deadStones, ruleset, new Set(), true, 0, 0, true);
     setFinalScore({ black: sc.black.total, white: sc.white.total });
     setWinner(sc.black.total > sc.white.total ? 'black' : sc.white.total > sc.black.total ? 'white' : 'draw');
     setPhase('ended');
@@ -240,7 +293,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
   };
 
   const onPassPress = () => {
-    if (phase !== 'play') return;
+    if (phase !== 'play' || placementsLeft > 0) return;
     if (mode === 'ai' && aiConfig && (turn !== aiConfig.userColor || aiThinking)) return;
     applyPass(turn);
   };
@@ -266,7 +319,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
   };
 
   const onResignPress = () => {
-    if (phase !== 'play') return;
+    if (phase !== 'play' || placementsLeft > 0) return;
     if (!resignArmed) {
       setResignArmed(true);
       showNotice('Tap Resign again to confirm');
@@ -278,50 +331,23 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
     setResignArmed(false);
   };
 
-  const onSizeTabPress = (size: number) => {
-    if (size === boardSize) return;
-    if (sizeArmed !== size) {
-      setSizeArmed(size);
-      showNotice(`Tap ${size}×${size} again to start a new ${size}×${size} game`);
-      return;
+  /** Start (or restart) a game, applying the sidebar's handicap & komi settings. */
+  const startGame = (
+    size: number,
+    opts?: { hOn?: boolean; hType?: HandicapType; hCount?: number },
+  ) => {
+    const hOn = opts?.hOn ?? handicapOn;
+    const hType = opts?.hType ?? handicapType;
+    let hCount = opts?.hCount ?? handicapCount;
+    if (hOn && hType === 'fixed') {
+      hCount = Math.max(1, Math.min(hCount, Math.max(1, getHoshiPoints(size).length - 1)));
     }
-    setSizeArmed(null);
+    // Komi follows the web: toggling handicap on locks komi out
+    // (direction 'none', which scores a 0.5 tie-breaker).
+    if (hOn) setKomiDirection('none');
     const b = createEmptyBoard(size);
-    setBoardSize(size);
-    setBoard(b);
-    setTurn('black');
-    setCaptures({ black: 0, white: 0 });
-    setHistory([getBoardString(b)]);
-    setSnapshots([]);
-    setLastMove(null);
-    setPasses(0);
-    setPhase('play');
-    setWinner(null);
-    setFinalScore(null);
-    setDeadStones(new Set());
-    setShowResults(false);
-    setNotice(null);
-    setPassNotice(null);
-    setAiThinking(false);
-    setResignArmed(false);
-  };
-
-  const toggleRuleset = () => {
-    setRuleset((r) => (r === 'japanese' ? 'chinese' : 'japanese'));
-    showNotice(`Ruleset: ${ruleset === 'japanese' ? 'Chinese' : 'Japanese'}`);
-  };
-
-  const THEMES = ['espresso', 'classic', 'midnight', 'washi', 'maple', 'riverstone'] as const;
-  const cycleTheme = () => {
-    const i = THEMES.indexOf(boardTheme);
-    const next = THEMES[(i + 1) % THEMES.length];
-    setBoardTheme(next);
-    showNotice(`Board: ${next}`);
-  };
-
-  const onRefreshPress = () => {
-    const b = createEmptyBoard(boardSize);
     const mainMs = (timeSettings?.mainTimeMinutes || 30) * 60000;
+    setBoardSize(size);
     setBoard(b);
     setTurn('black');
     setCaptures({ black: 0, white: 0 });
@@ -341,6 +367,151 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
     setPassNotice(null);
     setAiThinking(false);
     setResignArmed(false);
+    setFading([]);
+    setPlacementsLeft(hOn ? hCount + 1 : 0);
+    if (hOn) showNotice(`Handicap — Black places ${hCount + 1} stones`);
+  };
+
+  const onSizeTabPress = (size: number) => {
+    if (size === boardSize) return;
+    if (sizeArmed !== size) {
+      setSizeArmed(size);
+      showNotice(`Tap ${size}×${size} again to start a new ${size}×${size} game`);
+      return;
+    }
+    setSizeArmed(null);
+    startGame(size);
+  };
+
+  const onRefreshPress = () => startGame(boardSize);
+
+  const toggleRuleset = () => {
+    setRuleset((r) => (r === 'japanese' ? 'chinese' : 'japanese'));
+    showNotice(`Ruleset: ${ruleset === 'japanese' ? 'Chinese' : 'Japanese'}`);
+  };
+
+  // Komi wiring mirrors the web: standard → komi, reverse → reverseKomi,
+  // none → 0.5 tie-breaker.
+  const komiForScores = useMemo(() => {
+    if (komiDirection === 'standard') return { komi: komiValue, reverseKomi: 0 };
+    if (komiDirection === 'reverse') return { komi: 0, reverseKomi: komiValue };
+    return { komi: 0.5, reverseKomi: 0 };
+  }, [komiDirection, komiValue]);
+
+  const maxHandicap = useMemo(
+    () => (handicapType === 'fixed' ? Math.max(1, getHoshiPoints(boardSize).length - 1) : 8),
+    [handicapType, boardSize],
+  );
+
+  /* ------------------------------- SGF ---------------------------------- */
+
+  const buildSgf = () => {
+    const km = komiDirection === 'standard' ? komiValue : komiDirection === 'reverse' ? -komiValue : 0.5;
+    const date = new Date().toISOString().split('T')[0];
+    let sgf = `(;GM[1]FF[4]CA[UTF-8]AP[GoLuxe]SZ[${boardSize}]RU[${ruleset === 'chinese' ? 'Chinese' : 'Japanese'}]KM[${km}]DT[${date}]`;
+    // Reconstruct moves from snapshots + current position.
+    const moves: { color: Player; p: Point | null }[] = [];
+    let prevSnap: Snapshot | null = null;
+    for (const s of snapshots) {
+      if (prevSnap) {
+        const moved = findMoveDiff(prevSnap.board, s.board);
+        if (moved) moves.push(moved);
+        else if (s.passes > prevSnap.passes) moves.push({ color: prevSnap.turn, p: null });
+      }
+      prevSnap = s;
+    }
+    if (prevSnap) {
+      const moved = findMoveDiff(prevSnap.board, board);
+      if (moved) moves.push(moved);
+      else if (passes > prevSnap.passes) moves.push({ color: prevSnap.turn, p: null });
+    }
+    for (const m of moves) {
+      const c = m.color === 'black' ? 'B' : 'W';
+      sgf += m.p ? `;${c}[${String.fromCharCode(97 + m.p.x)}${String.fromCharCode(97 + m.p.y)}]` : `;${c}[]`;
+    }
+    sgf += ')';
+    return sgf;
+  };
+
+  const findMoveDiff = (a: Intersection[][], b: Intersection[][]): { color: Player; p: Point } | null => {
+    for (let y = 0; y < a.length; y++) {
+      for (let x = 0; x < a.length; x++) {
+        if (!a[y][x] && b[y][x]) return { color: b[y][x] as Player, p: { x, y } };
+      }
+    }
+    return null;
+  };
+
+  const onExportSgf = async () => {
+    try {
+      await Share.share({ message: buildSgf(), title: 'GoLuxe game record' });
+    } catch {
+      showNotice('Export failed');
+    }
+    setShowSidebar(false);
+  };
+
+  const onImportSgf = async () => {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({ type: ['text/*', 'application/*'], copyToCacheDirectory: true });
+      if (res.canceled || !res.assets?.length) return;
+      const file = res.assets[0];
+      const resp = await fetch(file.uri);
+      const text = await resp.text();
+      loadSgf(text);
+      setShowSidebar(false);
+    } catch {
+      showNotice('Could not read that file');
+    }
+  };
+
+  /** Minimal linear SGF loader: SZ, RU/KM, and the main-line B/W moves. */
+  const loadSgf = (text: string) => {
+    const sz = text.match(/SZ\[(\d+)\]/)?.[1];
+    const size = sz ? parseInt(sz, 10) : 9;
+    if (![9, 13, 19].includes(size)) {
+      showNotice('Only 9×9, 13×13 and 19×19 SGF supported');
+      return;
+    }
+    const ru = text.match(/RU\[(.*?)\]/)?.[1]?.toLowerCase();
+    const moves: { color: Player; p: Point | null }[] = [];
+    const re = /;(B|W)\[([a-s]{0,2})\]/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text))) {
+      const color: Player = m[1] === 'B' ? 'black' : 'white';
+      const s = m[2];
+      moves.push(s.length === 2 ? { color, p: { x: s.charCodeAt(0) - 97, y: s.charCodeAt(1) - 97 } } : { color, p: null });
+    }
+    startGame(size);
+    if (ru === 'chinese' || ru === 'japanese') setRuleset(ru);
+    // Replay the main line without capture validation (trust the record).
+    const b = createEmptyBoard(size);
+    let turnC: Player = 'black';
+    let consecutivePasses = 0;
+    for (const mv of moves) {
+      if (!mv.p) {
+        consecutivePasses += 1;
+        turnC = turnC === 'black' ? 'white' : 'black';
+        continue;
+      }
+      if (mv.p.x < size && mv.p.y < size) {
+        b[mv.p.y][mv.p.x] = mv.color;
+        setLastMove(mv.p);
+      }
+      consecutivePasses = 0;
+      turnC = mv.color === 'black' ? 'white' : 'black';
+    }
+    setBoard(b);
+    setTurn(turnC);
+    setHistory([getBoardString(b)]);
+    setSnapshots([]);
+    setPasses(consecutivePasses >= 2 ? 2 : 0);
+    if (consecutivePasses >= 2) {
+      setPhase('scoring');
+      showNotice('Scoring — tap any group to mark it dead or alive');
+    } else {
+      showNotice('SGF loaded — main line replayed');
+    }
   };
 
   // AI opponent
@@ -389,8 +560,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
 
   const scoreDetail = useMemo(() => {
     const includeTerritory = phase !== 'play';
-    return calculateScores(board, captures, KOMI, 0, deadStones, ruleset, new Set(), true, 0, 0, includeTerritory);
-  }, [board, captures, deadStones, phase]);
+    return calculateScores(board, captures, komiForScores.komi, komiForScores.reverseKomi, deadStones, ruleset, new Set(), true, 0, 0, includeTerritory);
+  }, [board, captures, deadStones, phase, komiForScores, ruleset]);
   const scores = useMemo(
     () => ({ black: scoreDetail.black.total, white: scoreDetail.white.total }),
     [scoreDetail],
@@ -399,25 +570,42 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
   const statusText = useMemo(() => {
     if (phase === 'ended') return 'End';
     if (phase === 'scoring') return 'Scoring';
+    if (placementsLeft > 0) return `Place Stones (${placementsLeft})`;
     if (mode === 'ai' && aiConfig) {
       if (aiThinking) return 'Thinking…';
       return turn === aiConfig.userColor ? 'Your Turn' : 'AI Turn';
     }
     return turn === 'black' ? 'Black to play' : 'White to play';
-  }, [phase, mode, aiConfig, aiThinking, turn]);
+  }, [phase, mode, aiConfig, aiThinking, turn, placementsLeft]);
 
   const actionBtn = (label: string, fn: () => void, opts?: { disabled?: boolean; danger?: boolean }) => (
     <Pressable
       onPress={fn}
       disabled={opts?.disabled}
-      style={[styles.actionBtn, opts?.danger && styles.actionBtnDanger, opts?.disabled && { opacity: 0.3 }]}
+      style={({ pressed }) => [
+        styles.actionBtn,
+        opts?.danger && styles.actionBtnDanger,
+        opts?.disabled && { opacity: 0.3 },
+        pressed && !opts?.disabled && { transform: [{ scale: 0.95 }] },
+      ]}
     >
       <Text style={[styles.actionText, opts?.danger && styles.actionTextDanger]}>{label}</Text>
     </Pressable>
   );
 
+  const handleExit = () => {
+    setIsExiting(true);
+    setTimeout(onExit, 500);
+  };
+
+  const gearDisabled = false; // web disables during guides; native game has no guide mode
+
   return (
-    <View style={styles.root}>
+    <Animated.View
+      entering={FadeIn.duration(500)}
+      exiting={FadeOut.duration(500)}
+      style={styles.root}
+    >
       <StatusBar barStyle="light-content" />
       <LinearGradient
         colors={['rgba(254,243,199,0.05)', 'rgba(254,243,199,0)']}
@@ -427,37 +615,42 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
         pointerEvents="none"
       />
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Pressable onPress={onExit} style={styles.exitBtn}>
-            <Text style={styles.exitText}>‹ Menu</Text>
+        {/* Top bar — web session-topbar: gear left, board-size tabs center */}
+        <View style={styles.topbar}>
+          <Pressable
+            onPress={() => setShowSidebar((v) => !v)}
+            disabled={gearDisabled}
+            style={[styles.gearBtn, gearDisabled && { opacity: 0.2 }]}
+            accessibilityLabel="Toggle Menu"
+          >
+            <GearIcon open={showSidebar} color="#ffffff" />
           </Pressable>
-          <Text style={styles.title}>GoLuxe</Text>
-          <Pressable onPress={cycleTheme} style={styles.themeBtn}>
-            <Text style={styles.themeText}>◐</Text>
-          </Pressable>
-        </View>
-        <View style={styles.subRow}>
-          <Text style={styles.subText}>
-            {mode === 'ai' && aiConfig ? `Vs AI (${aiConfig.difficulty})` : 'Strategic Purity'}
-          </Text>
-          <Text style={styles.subDot}>•</Text>
-          <Pressable onPress={toggleRuleset}>
-            <Text style={[styles.subText, styles.rulesText]}>{ruleset === 'japanese' ? 'Japanese' : 'Chinese'} Rules</Text>
-          </Pressable>
+          <View style={styles.sizeRow}>
+            {BOARD_SIZES.map((s) => (
+              <Pressable key={s} onPress={() => onSizeTabPress(s)} style={styles.sizeTab}>
+                <Text style={[styles.sizeText, boardSize === s && styles.sizeTextActive]}>
+                  {s}×{s}
+                </Text>
+                {boardSize === s && <View style={styles.sizeUnderline} />}
+              </Pressable>
+            ))}
+          </View>
+          <View style={styles.topbarSpacer} />
         </View>
 
-        {/* Board size tabs */}
-        <View style={styles.sizeRow}>
-          {BOARD_SIZES.map((s) => (
-            <Pressable key={s} onPress={() => onSizeTabPress(s)} style={styles.sizeTab}>
-              <Text style={[styles.sizeText, boardSize === s && styles.sizeTextActive]}>
-                {s}×{s}
-              </Text>
-              {boardSize === s && <View style={styles.sizeUnderline} />}
+        {/* Title */}
+        <Animated.View entering={FadeIn.duration(700)} style={styles.titleBlock}>
+          <Text style={styles.title}>GoLuxe</Text>
+          <View style={styles.subRow}>
+            <Text style={styles.subText}>
+              {mode === 'ai' && aiConfig ? `Vs AI (${aiConfig.difficulty})` : 'Strategic Purity'}
+            </Text>
+            <Text style={styles.subDot}>•</Text>
+            <Pressable onPress={toggleRuleset}>
+              <Text style={[styles.subText, styles.rulesText]}>{ruleset === 'japanese' ? 'Japanese' : 'Chinese'} Rules</Text>
             </Pressable>
-          ))}
-        </View>
+          </View>
+        </Animated.View>
 
         {/* Score strip */}
         <View style={styles.scoreStrip}>
@@ -502,9 +695,11 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
             turn={turn}
             boardPx={BOARD_PX}
             interactive={phase !== 'ended' && (timeSettings ? gameStarted : true) && !(mode === 'ai' && aiConfig && phase === 'play' && (turn !== aiConfig.userColor || aiThinking))}
-            showLiberties={phase === 'play'}
-            hideAtari={phase === 'scoring'}
+            showLiberties={showLiberties && phase === 'play'}
+            showLifeStatus={showLifeStatus}
+            hideAtari={!showAtariWarning || phase === 'scoring'}
             deadStones={phase === 'scoring' ? deadStones : null}
+            fading={fading}
             theme={boardTheme}
           />
         </View>
@@ -548,10 +743,10 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
         )}
       </ScrollView>
 
-      {/* Final results modal */}
+      {/* Final results modal — web: animate-in zoom-in duration-300 */}
       <Modal visible={showResults && phase === 'ended'} transparent animationType="fade">
         <View style={styles.modalBg}>
-          <View style={styles.modalCard}>
+          <Animated.View entering={ZoomIn.duration(300)} style={styles.modalCard}>
             <Text style={styles.modalTitle}>
               {winner === 'draw' ? 'Draw' : 'Match Conclusion'}
             </Text>
@@ -597,27 +792,79 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, o
                 <Text style={styles.modalBtnGhostText}>Return to Board</Text>
               </Pressable>
             </View>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
-    </View>
+
+      {/* Settings sidebar — web GameSession parity */}
+      <Sidebar
+        visible={showSidebar}
+        onClose={() => setShowSidebar(false)}
+        onExitToMenu={handleExit}
+        showLiberties={showLiberties}
+        setShowLiberties={setShowLiberties}
+        showAtariWarning={showAtariWarning}
+        setShowAtariWarning={setShowAtariWarning}
+        showLifeStatus={showLifeStatus}
+        setShowLifeStatus={setShowLifeStatus}
+        ruleset={ruleset}
+        onRuleset={(r) => {
+          setRuleset(r);
+          showNotice(`Ruleset: ${r === 'japanese' ? 'Japanese' : 'Chinese'}`);
+        }}
+        handicapOn={handicapOn}
+        onToggleHandicap={() => {
+          const next = !handicapOn;
+          setHandicapOn(next);
+          setShowSidebar(false);
+          startGame(boardSize, { hOn: next });
+        }}
+        handicapType={handicapType}
+        onHandicapType={(t) => {
+          setHandicapType(t);
+          startGame(boardSize, { hType: t });
+        }}
+        handicapCount={handicapCount}
+        onHandicapCount={(n) => {
+          setHandicapCount(n);
+          startGame(boardSize, { hCount: n });
+        }}
+        maxHandicap={maxHandicap}
+        komiDirection={komiDirection}
+        setKomiDirection={setKomiDirection}
+        komiValue={komiValue}
+        setKomiValue={setKomiValue}
+        boardTheme={boardTheme}
+        setBoardTheme={setBoardTheme}
+        onExportSgf={onExportSgf}
+        onImportSgf={onImportSgf}
+      />
+    </Animated.View>
   );
 };
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   scroll: { flexGrow: 1, alignItems: 'center', paddingTop: 12, paddingBottom: 32, paddingHorizontal: 16 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 2 },
-  exitBtn: { minWidth: 64, paddingVertical: 8 },
-  exitText: { color: C.white40, fontSize: 12, fontFamily: SERIF, letterSpacing: 2, textTransform: 'uppercase' },
-  themeBtn: { minWidth: 64, paddingVertical: 8, alignItems: 'flex-end' },
-  themeText: { color: C.white40, fontSize: 18 },
+  topbar: {
+    width: '100%',
+    height: 60,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: C.white05,
+    marginBottom: 4,
+  },
+  gearBtn: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', opacity: 0.4 },
+  topbarSpacer: { width: 48 },
+  titleBlock: { alignItems: 'center', paddingVertical: 8 },
   title: { fontFamily: SERIF, fontSize: 26, fontWeight: '600', color: C.amber50, letterSpacing: -0.5 },
   subRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
   subText: { color: 'rgba(255,255,255,0.30)', fontSize: 9, letterSpacing: 4, textTransform: 'uppercase', fontWeight: '500' },
   subDot: { color: 'rgba(255,255,255,0.25)', fontSize: 9 },
   rulesText: { color: C.amber100, fontWeight: '700' },
-  sizeRow: { flexDirection: 'row', gap: 28, justifyContent: 'center', marginBottom: 10 },
+  sizeRow: { flex: 1, flexDirection: 'row', gap: 28, justifyContent: 'center', alignItems: 'center' },
   sizeTab: { alignItems: 'center', paddingVertical: 4, minWidth: 56 },
   sizeText: {
     fontFamily: SERIF,
