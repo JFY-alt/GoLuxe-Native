@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
   Pressable,
@@ -17,19 +17,27 @@ import {
   getHoshiPoints,
   isSelfCapture,
 } from './logic/goEngine';
-import { Intersection, Player, Point } from './types';
+import { getBestMove } from './logic/simpleAi';
+import { GameState, Intersection, Player, Point } from './types';
 
 const BOARD_N = 9;
 const KOMI = 7.5;
+const AI_DIFFICULTY = 'intermediate' as const;
+const AI_DELAY_MS = 750;
 
 const screenW = Dimensions.get('window').width;
 const BOARD_PX = Math.min(screenW - 24, 420);
 const CELL = BOARD_PX / BOARD_N;
 const pointXY = (i: number) => CELL / 2 + i * CELL;
 
+type Screen = 'home' | 'game';
+type Mode = 'ai' | '2p';
 type Phase = 'play' | 'ended';
 
 export default function App() {
+  const [screen, setScreen] = useState<Screen>('home');
+  const [mode, setMode] = useState<Mode>('2p');
+
   const [board, setBoard] = useState<Intersection[][]>(() => createEmptyBoard(BOARD_N));
   const [turn, setTurn] = useState<Player>('black');
   const [captures, setCaptures] = useState({ black: 0, white: 0 });
@@ -40,6 +48,7 @@ export default function App() {
   const [winner, setWinner] = useState<Player | 'draw' | null>(null);
   const [finalScore, setFinalScore] = useState<{ black: number; white: number } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [aiThinking, setAiThinking] = useState(false);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showNotice = (msg: string) => {
@@ -48,8 +57,9 @@ export default function App() {
     noticeTimer.current = setTimeout(() => setNotice(null), 2200);
   };
 
-  const newGame = () => {
+  const startGame = (m: Mode) => {
     const b = createEmptyBoard(BOARD_N);
+    setMode(m);
     setBoard(b);
     setTurn('black');
     setCaptures({ black: 0, white: 0 });
@@ -60,6 +70,14 @@ export default function App() {
     setWinner(null);
     setFinalScore(null);
     setNotice(null);
+    setAiThinking(false);
+    setScreen('game');
+  };
+
+  const newGame = () => startGame(mode);
+  const goHome = () => {
+    setAiThinking(false);
+    setScreen('home');
   };
 
   const validateMove = (
@@ -81,31 +99,22 @@ export default function App() {
     return { valid: true, newBoard, captureCount };
   };
 
-  const placeStone = (p: Point) => {
-    if (phase !== 'play') return;
-    const { valid, reason, newBoard, captureCount } = validateMove(p, turn, board, history);
+  const applyMove = (p: Point, player: Player): boolean => {
+    const { valid, reason, newBoard, captureCount } = validateMove(p, player, board, history);
     if (!valid || !newBoard || captureCount === undefined) {
-      showNotice(reason || 'Illegal move');
-      return;
+      if (player === 'black' || mode === '2p') showNotice(reason || 'Illegal move');
+      return false;
     }
     setBoard(newBoard);
-    setCaptures((c) => ({ ...c, [turn]: c[turn] + captureCount }));
+    setCaptures((c) => ({ ...c, [player]: c[player] + captureCount }));
     setHistory((h) => [...h, getBoardString(newBoard)]);
     setLastMove(p);
-    setTurn(turn === 'black' ? 'white' : 'black');
+    setTurn(player === 'black' ? 'white' : 'black');
     setPasses(0);
+    return true;
   };
 
-  const onBoardPress = (e: any) => {
-    const { locationX, locationY } = e.nativeEvent;
-    const i = Math.round((locationX - CELL / 2) / CELL);
-    const j = Math.round((locationY - CELL / 2) / CELL);
-    if (i < 0 || i >= BOARD_N || j < 0 || j >= BOARD_N) return;
-    placeStone({ x: i, y: j });
-  };
-
-  const onPass = () => {
-    if (phase !== 'play') return;
+  const applyPass = (player: Player) => {
     const next = passes + 1;
     setPasses(next);
     setLastMove(null);
@@ -115,10 +124,68 @@ export default function App() {
       setWinner(s.black.total > s.white.total ? 'black' : s.white.total > s.black.total ? 'white' : 'draw');
       setPhase('ended');
     } else {
-      setTurn(turn === 'black' ? 'white' : 'black');
-      showNotice(`${turn === 'black' ? 'Black' : 'White'} passed`);
+      setTurn(player === 'black' ? 'white' : 'black');
+      showNotice(`${player === 'black' ? 'Black' : 'White'} passed`);
     }
   };
+
+  const onBoardPress = (e: any) => {
+    if (phase !== 'play') return;
+    if (mode === 'ai' && (turn !== 'black' || aiThinking)) return;
+    const { locationX, locationY } = e.nativeEvent;
+    const i = Math.round((locationX - CELL / 2) / CELL);
+    const j = Math.round((locationY - CELL / 2) / CELL);
+    if (i < 0 || i >= BOARD_N || j < 0 || j >= BOARD_N) return;
+    applyMove({ x: i, y: j }, turn);
+  };
+
+  const onPassPress = () => {
+    if (phase !== 'play') return;
+    if (mode === 'ai' && (turn !== 'black' || aiThinking)) return;
+    applyPass(turn);
+  };
+
+  // AI opponent: user is Black, AI is White.
+  useEffect(() => {
+    if (screen !== 'game' || mode !== 'ai' || phase !== 'play' || turn !== 'white') return;
+    setAiThinking(true);
+    const t = setTimeout(() => {
+      const gs: GameState = {
+        board,
+        turn: 'white',
+        captures,
+        lastMove,
+        history,
+        phase: 'play',
+        winner: null,
+        consecutivePasses: passes,
+        handicapPlacementsLeft: 0,
+        deadStones: new Set<string>(),
+        sekiPoints: new Set<string>(),
+        reviewedPoints: new Set<string>(),
+        ruleset: 'japanese',
+      };
+      let move: Point | 'pass' | 'resign';
+      try {
+        move = getBestMove(gs, AI_DIFFICULTY);
+      } catch {
+        move = 'pass';
+      }
+      if (move === 'resign') {
+        setWinner('black');
+        setPhase('ended');
+        showNotice('White resigns — Black wins');
+      } else if (move === 'pass') {
+        applyPass('white');
+      } else {
+        const ok = applyMove(move, 'white');
+        if (!ok) applyPass('white');
+      }
+      setAiThinking(false);
+    }, AI_DELAY_MS);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, mode, phase, turn, board]);
 
   const atari = useMemo(() => (phase === 'play' ? getAtariPoints(board) : new Set<string>()), [board, phase]);
   const hoshi = useMemo(() => getHoshiPoints(BOARD_N), []);
@@ -186,23 +253,57 @@ export default function App() {
     return els;
   };
 
+  if (screen === 'home') {
+    return (
+      <SafeAreaView style={styles.homeRoot}>
+        <StatusBar barStyle="light-content" />
+        <View style={styles.homeCenter}>
+          <Text style={styles.homeTitle}>GoLuxe</Text>
+          <Text style={styles.homeSubtitle}>STRATEGIC PURITY</Text>
+          <View style={styles.homeButtons}>
+            <Pressable onPress={() => startGame('ai')} style={styles.menuButton}>
+              <Text style={styles.menuButtonText}>PLAY VS AI</Text>
+            </Pressable>
+            <Pressable onPress={() => startGame('2p')} style={styles.menuButton}>
+              <Text style={styles.menuButtonText}>TWO PLAYERS</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.homeHint}>You play Black against the AI</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar barStyle="light-content" />
-      <Text style={styles.title}>GoLuxe</Text>
+      <View style={styles.topBar}>
+        <Pressable onPress={goHome} style={styles.backButton}>
+          <Text style={styles.backText}>‹ Home</Text>
+        </Pressable>
+        <Text style={styles.title}>GoLuxe</Text>
+        <View style={styles.backButton} />
+      </View>
+      <Text style={styles.modeLabel}>{mode === 'ai' ? 'VS AI (INTERMEDIATE)' : 'TWO PLAYERS'}</Text>
 
       <View style={styles.scoreRow}>
         <View style={[styles.scoreCard, turn === 'black' && phase === 'play' && styles.activeCard]}>
-          <Text style={styles.scoreLabel}>BLACK</Text>
+          <Text style={styles.scoreLabel}>BLACK{mode === 'ai' ? ' (YOU)' : ''}</Text>
           <Text style={styles.scoreValue}>{captures.black} cap</Text>
         </View>
         <View style={styles.turnBadge}>
           <Text style={styles.turnText}>
-            {phase === 'ended' ? 'Game over' : turn === 'black' ? '● to play' : '○ to play'}
+            {phase === 'ended'
+              ? 'Game over'
+              : aiThinking
+                ? 'AI thinking…'
+                : turn === 'black'
+                  ? '● to play'
+                  : '○ to play'}
           </Text>
         </View>
         <View style={[styles.scoreCard, turn === 'white' && phase === 'play' && styles.activeCard]}>
-          <Text style={styles.scoreLabel}>WHITE</Text>
+          <Text style={styles.scoreLabel}>WHITE{mode === 'ai' ? ' (AI)' : ''}</Text>
           <Text style={styles.scoreValue}>{captures.white} cap</Text>
         </View>
       </View>
@@ -231,7 +332,11 @@ export default function App() {
       </View>
 
       <View style={styles.buttonRow}>
-        <Pressable onPress={onPass} disabled={phase !== 'play'} style={[styles.button, phase !== 'play' && styles.disabled]}>
+        <Pressable
+          onPress={onPassPress}
+          disabled={phase !== 'play' || aiThinking}
+          style={[styles.button, (phase !== 'play' || aiThinking) && styles.disabled]}
+        >
           <Text style={styles.buttonText}>Pass</Text>
         </Pressable>
         <Pressable onPress={newGame} style={styles.button}>
@@ -242,9 +347,40 @@ export default function App() {
   );
 }
 
+const AMBER = '#fcd34d';
+const AMBER_DIM = '#fde68a';
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0d0d0d', alignItems: 'center' },
-  title: { color: '#faf3e3', fontSize: 34, fontWeight: '700', marginTop: 12, letterSpacing: 2 },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingHorizontal: 12,
+    marginTop: 4,
+  },
+  backButton: { minWidth: 64, paddingVertical: 8 },
+  backText: { color: '#ffffff66', fontSize: 15 },
+  title: { color: '#faf3e3', fontSize: 26, fontWeight: '700', letterSpacing: 2 },
+  modeLabel: { color: '#ffffff33', fontSize: 10, letterSpacing: 3, marginTop: 2 },
+
+  homeRoot: { flex: 1, backgroundColor: '#0d0d0d' },
+  homeCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  homeTitle: { color: '#faf3e3', fontSize: 64, fontWeight: '700', letterSpacing: 4 },
+  homeSubtitle: { color: '#fcd34d66', fontSize: 12, letterSpacing: 8, marginTop: 8, fontWeight: '300' },
+  homeButtons: { marginTop: 48, width: '100%', gap: 14 },
+  menuButton: {
+    borderWidth: 1,
+    borderColor: '#ffffff1a',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    backgroundColor: '#ffffff08',
+  },
+  menuButtonText: { color: AMBER_DIM, fontSize: 14, letterSpacing: 3, fontWeight: '600' },
+  homeHint: { color: '#ffffff33', fontSize: 12, marginTop: 24 },
+
   scoreRow: { flexDirection: 'row', alignItems: 'center', marginTop: 14, gap: 12 },
   scoreCard: {
     backgroundColor: '#151515',
@@ -256,20 +392,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     minWidth: 96,
   },
-  activeCard: { borderColor: '#fcd34d' },
+  activeCard: { borderColor: AMBER },
   scoreLabel: { color: '#888', fontSize: 10, letterSpacing: 2 },
   scoreValue: { color: '#faf3e3', fontSize: 16, marginTop: 2 },
-  turnBadge: { paddingHorizontal: 6 },
-  turnText: { color: '#fcd34d', fontSize: 14 },
+  turnBadge: { paddingHorizontal: 6, minWidth: 90, alignItems: 'center' },
+  turnText: { color: AMBER, fontSize: 14 },
   boardWrap: { marginTop: 18, padding: 6, backgroundColor: '#151515', borderRadius: 14 },
   board: { backgroundColor: '#c9a35f', borderRadius: 8, position: 'relative', overflow: 'hidden' },
   gridLine: { position: 'absolute', backgroundColor: '#5b4426' },
   hoshi: { position: 'absolute', width: 6, height: 6, borderRadius: 3, backgroundColor: '#5b4426' },
   stone: { position: 'absolute', shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 2, shadowOffset: { width: 0, height: 1 } },
   atariRing: { position: 'absolute', borderWidth: 2, borderColor: '#e11d48' },
-  lastMove: { position: 'absolute', width: 8, height: 8, borderRadius: 4, backgroundColor: '#fcd34d' },
+  lastMove: { position: 'absolute', width: 8, height: 8, borderRadius: 4, backgroundColor: AMBER },
   noticeBox: { height: 30, justifyContent: 'center', marginTop: 10 },
-  noticeText: { color: '#fcd34d', fontSize: 14 },
+  noticeText: { color: AMBER, fontSize: 14 },
   buttonRow: { flexDirection: 'row', gap: 12, marginTop: 8 },
   button: {
     backgroundColor: '#fcd34d22',
@@ -280,5 +416,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
   },
   disabled: { opacity: 0.35 },
-  buttonText: { color: '#fde68a', fontSize: 14, fontWeight: '700', letterSpacing: 1 },
+  buttonText: { color: AMBER_DIM, fontSize: 14, fontWeight: '700', letterSpacing: 1 },
 });
