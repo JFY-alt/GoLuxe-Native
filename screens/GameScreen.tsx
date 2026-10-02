@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
+  Modal,
   Pressable,
   ScrollView,
   StatusBar,
@@ -15,12 +16,15 @@ import {
   calculateScores,
   checkCaptures,
   createEmptyBoard,
+  findGroup,
   getBoardString,
   isSelfCapture,
 } from '../logic/goEngine';
 import { getBestMove } from '../logic/simpleAi';
 import { GameState, Intersection, Player, Point } from '../types';
 import { AiConfig } from './AiSetupMenu';
+import { clockAfterMove, clockDisplay, createClock, tickClock } from '../logic/clocks';
+import { PlayerClock, TimeSettings } from '../types';
 import { C, SERIF } from '../theme';
 
 const BOARD_N = 9;
@@ -41,6 +45,7 @@ interface Snapshot {
 interface GameScreenProps {
   mode: 'ai' | '2p';
   aiConfig: AiConfig | null;
+  timeSettings: TimeSettings | null;
   onExit: () => void;
 }
 
@@ -49,7 +54,7 @@ interface GameScreenProps {
  * serif GoLuxe header + subtitle row, score strip (black | status | white),
  * espresso board, notice line, Undo/Pass/Resign/Refresh action row.
  */
-const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, onExit }) => {
+const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, timeSettings, onExit }) => {
   const [board, setBoard] = useState<Intersection[][]>(() => createEmptyBoard(BOARD_N));
   const [turn, setTurn] = useState<Player>('black');
   const [captures, setCaptures] = useState({ black: 0, white: 0 });
@@ -57,14 +62,67 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, onExit }) => {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [lastMove, setLastMove] = useState<Point | null>(null);
   const [passes, setPasses] = useState(0);
-  const [phase, setPhase] = useState<'play' | 'ended'>('play');
+  const [phase, setPhase] = useState<'play' | 'scoring' | 'ended'>('play');
   const [winner, setWinner] = useState<Player | 'draw' | null>(null);
   const [finalScore, setFinalScore] = useState<{ black: number; white: number } | null>(null);
+  const [deadStones, setDeadStones] = useState<Set<string>>(new Set());
+  const [showResults, setShowResults] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [passNotice, setPassNotice] = useState<string | null>(null);
   const [aiThinking, setAiThinking] = useState(false);
   const [resignArmed, setResignArmed] = useState(false);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Timed mode clocks
+  const [blackClock, setBlackClock] = useState<PlayerClock>(() =>
+    createClock(timeSettings, (timeSettings?.mainTimeMinutes || 30) * 60000));
+  const [whiteClock, setWhiteClock] = useState<PlayerClock>(() =>
+    createClock(timeSettings, (timeSettings?.mainTimeMinutes || 30) * 60000));
+  const [gameStarted, setGameStarted] = useState(!timeSettings);
+  const lastTick = useRef(Date.now());
+
+  const handleTimeOut = (player: Player) => {
+    if (phase !== 'play') return;
+    setWinner(player === 'black' ? 'white' : 'black');
+    setPhase('ended');
+    setFinalScore(null);
+    setShowResults(true);
+    showNotice(`${player === 'black' ? 'Black' : 'White'} ran out of time`);
+  };
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
+  const turnRef = useRef(turn);
+  turnRef.current = turn;
+
+  // Clock ticking
+  useEffect(() => {
+    if (!timeSettings || !gameStarted || phase !== 'play') return;
+    lastTick.current = Date.now();
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const delta = now - lastTick.current;
+      lastTick.current = now;
+      if (delta <= 0) return;
+      const active = turnRef.current;
+      const setClock = active === 'black' ? setBlackClock : setWhiteClock;
+      let timedOut = false;
+      setClock((prev) => {
+        const r = tickClock(prev, timeSettings, delta);
+        if (r.timedOut) timedOut = true;
+        return r.clock;
+      });
+      if (timedOut && phaseRef.current === 'play') handleTimeOut(active);
+    }, 250);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeSettings, gameStarted, phase]);
+
+  const bumpClockAfterMove = (player: Player) => {
+    if (!timeSettings) return;
+    const setClock = player === 'black' ? setBlackClock : setWhiteClock;
+    setClock((prev) => clockAfterMove(prev, timeSettings));
+    lastTick.current = Date.now();
+  };
 
   const showNotice = (msg: string) => {
     setNotice(msg);
@@ -108,6 +166,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, onExit }) => {
     setPasses(0);
     setPassNotice(null);
     setResignArmed(false);
+    bumpClockAfterMove(player);
     return true;
   };
 
@@ -119,20 +178,58 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, onExit }) => {
     setLastMove(null);
     setResignArmed(false);
     if (next >= 2) {
-      const sc = calculateScores(s.board, s.captures, KOMI, 0, new Set(), 'japanese', new Set(), true, 0, 0, true);
-      setFinalScore({ black: sc.black.total, white: sc.white.total });
-      setWinner(sc.black.total > sc.white.total ? 'black' : sc.white.total > sc.black.total ? 'white' : 'draw');
-      setPhase('ended');
+      // Enter scoring phase — tap groups to mark dead/alive, then finalize.
+      setPhase('scoring');
+      setDeadStones(new Set());
       setPassNotice(null);
+      showNotice('Scoring — tap any group to mark it dead or alive');
     } else {
       setTurn(player === 'black' ? 'white' : 'black');
       const label = player === 'black' ? 'Black passed' : 'White passed';
       setPassNotice(label);
       showNotice(label);
+      bumpClockAfterMove(player);
     }
   };
 
+  const toggleDeadGroup = (p: Point) => {
+    if (!board[p.y][p.x]) return;
+    const groupInfo = findGroup(board, p);
+    if (!groupInfo) return;
+    setDeadStones((prev) => {
+      const next = new Set(prev);
+      const firstKey = `${groupInfo.group[0].x},${groupInfo.group[0].y}`;
+      const isDead = next.has(firstKey);
+      groupInfo.group.forEach((gp) => {
+        const k = `${gp.x},${gp.y}`;
+        if (isDead) next.delete(k);
+        else next.add(k);
+      });
+      return next;
+    });
+  };
+
+  const finalizeScore = () => {
+    const sc = calculateScores(board, captures, KOMI, 0, deadStones, 'japanese', new Set(), true, 0, 0, true);
+    setFinalScore({ black: sc.black.total, white: sc.white.total });
+    setWinner(sc.black.total > sc.white.total ? 'black' : sc.white.total > sc.black.total ? 'white' : 'draw');
+    setPhase('ended');
+    setShowResults(true);
+  };
+
+  const resumePlay = () => {
+    setPhase('play');
+    setPasses(0);
+    setDeadStones(new Set());
+    setPassNotice(null);
+    showNotice('Resumed — play on');
+  };
+
   const onIntersectionPress = (p: Point) => {
+    if (phase === 'scoring') {
+      toggleDeadGroup(p);
+      return;
+    }
     if (phase !== 'play') return;
     if (mode === 'ai' && aiConfig && (turn !== aiConfig.userColor || aiThinking)) return;
     applyMove(p, turn);
@@ -179,6 +276,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, onExit }) => {
 
   const onRefreshPress = () => {
     const b = createEmptyBoard(BOARD_N);
+    const mainMs = (timeSettings?.mainTimeMinutes || 30) * 60000;
     setBoard(b);
     setTurn('black');
     setCaptures({ black: 0, white: 0 });
@@ -189,6 +287,11 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, onExit }) => {
     setPhase('play');
     setWinner(null);
     setFinalScore(null);
+    setDeadStones(new Set());
+    setShowResults(false);
+    setBlackClock(createClock(timeSettings, mainMs));
+    setWhiteClock(createClock(timeSettings, mainMs));
+    setGameStarted(!timeSettings);
     setNotice(null);
     setPassNotice(null);
     setAiThinking(false);
@@ -239,13 +342,18 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, onExit }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, aiConfig, phase, turn, board]);
 
-  const scores = useMemo(() => {
-    const sc = calculateScores(board, captures, KOMI, 0, new Set(), 'japanese', new Set(), false, 0, 0, true);
-    return { black: sc.black.total, white: sc.white.total };
-  }, [board, captures]);
+  const scoreDetail = useMemo(() => {
+    const includeTerritory = phase !== 'play';
+    return calculateScores(board, captures, KOMI, 0, deadStones, 'japanese', new Set(), true, 0, 0, includeTerritory);
+  }, [board, captures, deadStones, phase]);
+  const scores = useMemo(
+    () => ({ black: scoreDetail.black.total, white: scoreDetail.white.total }),
+    [scoreDetail],
+  );
 
   const statusText = useMemo(() => {
     if (phase === 'ended') return 'End';
+    if (phase === 'scoring') return 'Scoring';
     if (mode === 'ai' && aiConfig) {
       if (aiThinking) return 'Thinking…';
       return turn === aiConfig.userColor ? 'Your Turn' : 'AI Turn';
@@ -300,7 +408,19 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, onExit }) => {
             </View>
           </View>
           <View style={styles.scoreCenter}>
-            <Text style={styles.statusText}>{statusText}</Text>
+            {timeSettings ? (
+              <Text style={styles.clockText}>
+                <Text style={turn === 'black' && phase === 'play' ? styles.clockActive : styles.clockIdle}>
+                  {clockDisplay(blackClock, timeSettings)}
+                </Text>
+                <Text style={styles.clockSep}> | </Text>
+                <Text style={turn === 'white' && phase === 'play' ? styles.clockActive : styles.clockIdle}>
+                  {clockDisplay(whiteClock, timeSettings)}
+                </Text>
+              </Text>
+            ) : (
+              <Text style={styles.statusText}>{statusText}</Text>
+            )}
             {passNotice && <Text style={styles.passNotice}>{passNotice}</Text>}
           </View>
           <View style={[styles.scoreSideRight, turn === 'white' && phase === 'play' ? { opacity: 1 } : { opacity: 0.3 }]}>
@@ -320,8 +440,10 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, onExit }) => {
             onIntersectionPress={onIntersectionPress}
             turn={turn}
             boardPx={BOARD_PX}
-            interactive={phase === 'play' && !(mode === 'ai' && aiConfig && (turn !== aiConfig.userColor || aiThinking))}
-            showLiberties
+            interactive={phase !== 'ended' && (timeSettings ? gameStarted : true) && !(mode === 'ai' && aiConfig && phase === 'play' && (turn !== aiConfig.userColor || aiThinking))}
+            showLiberties={phase === 'play'}
+            hideAtari={phase === 'scoring'}
+            deadStones={phase === 'scoring' ? deadStones : null}
           />
         </View>
 
@@ -337,12 +459,23 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, onExit }) => {
         </View>
 
         {/* Action buttons */}
-        {phase === 'play' ? (
+        {timeSettings && !gameStarted && phase === 'play' ? (
+          <Pressable onPress={() => { setGameStarted(true); lastTick.current = Date.now(); }} style={styles.startGameBtn}>
+            <Text style={styles.startGameText}>Start Game</Text>
+          </Pressable>
+        ) : phase === 'play' ? (
           <View style={styles.actionRow}>
-            {actionBtn('Undo', onUndoPress, { disabled: snapshots.length === 0 || aiThinking })}
+            {actionBtn('Undo', onUndoPress, { disabled: snapshots.length === 0 || aiThinking || !!timeSettings })}
             {actionBtn('Pass', onPassPress, { disabled: aiThinking })}
             {actionBtn(resignArmed ? 'Confirm?' : 'Resign', onResignPress, { danger: true })}
             {actionBtn('Refresh', onRefreshPress)}
+          </View>
+        ) : phase === 'scoring' ? (
+          <View style={styles.actionRow}>
+            {actionBtn('Resume Play', resumePlay)}
+            <Pressable onPress={finalizeScore} style={styles.finalizeBtn}>
+              <Text style={styles.finalizeText}>Finalize Score</Text>
+            </Pressable>
           </View>
         ) : (
           <View style={styles.actionRow}>
@@ -352,6 +485,59 @@ const GameScreen: React.FC<GameScreenProps> = ({ mode, aiConfig, onExit }) => {
           </View>
         )}
       </ScrollView>
+
+      {/* Final results modal */}
+      <Modal visible={showResults && phase === 'ended'} transparent animationType="fade">
+        <View style={styles.modalBg}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>
+              {winner === 'draw' ? 'Draw' : 'Match Conclusion'}
+            </Text>
+            <Text style={styles.modalRules}>japanese rules</Text>
+            <View style={styles.resultRow}>
+              {(['black', 'white'] as const).map((color) => {
+                const d = color === 'black' ? scoreDetail.black : scoreDetail.white;
+                const isWinner = winner === color;
+                return (
+                  <View key={color} style={[styles.resultCard, isWinner ? styles.resultCardWinner : styles.resultCardLoser]}>
+                    <View style={styles.resultHead}>
+                      <View style={[styles.miniStone, color === 'black'
+                        ? { backgroundColor: '#000', borderColor: 'rgba(255,255,255,0.20)' }
+                        : { backgroundColor: '#fff', borderColor: 'rgba(255,255,255,0.20)' }]} />
+                      <Text style={styles.resultName}>{color === 'black' ? 'Black' : 'White'}</Text>
+                      {isWinner && <Text style={styles.winnerBadge}>Winner</Text>}
+                    </View>
+                    <View style={styles.resultLine}>
+                      <Text style={styles.resultLabel}>Territory</Text>
+                      <Text style={styles.resultValue}>+{d.territory}</Text>
+                    </View>
+                    <View style={styles.resultLine}>
+                      <Text style={styles.resultLabel}>Prisoners</Text>
+                      <Text style={styles.resultValue}>+{d.captures}</Text>
+                    </View>
+                    <View style={styles.resultLine}>
+                      <Text style={styles.resultLabel}>{color === 'black' ? 'Comp.' : 'Komi'}</Text>
+                      <Text style={styles.resultValue}>+{color === 'black' ? d.reverseKomi : d.komi}</Text>
+                    </View>
+                    <View style={styles.resultTotal}>
+                      <Text style={styles.resultTotalLabel}>Total</Text>
+                      <Text style={styles.resultTotalValue}>{d.total.toFixed(1)}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Pressable onPress={onRefreshPress} style={[styles.modalBtn, styles.modalBtnGold]}>
+                <Text style={styles.modalBtnGoldText}>New Game</Text>
+              </Pressable>
+              <Pressable onPress={() => setShowResults(false)} style={[styles.modalBtn, styles.modalBtnGhost]}>
+                <Text style={styles.modalBtnGhostText}>Return to Board</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -389,7 +575,23 @@ const styles = StyleSheet.create({
   scoreValue: { fontSize: 18, color: C.amber50, fontVariant: ['tabular-nums'] },
   scoreCenter: { alignItems: 'center', gap: 2, flex: 1, paddingHorizontal: 8 },
   statusText: { fontSize: 10, color: 'rgba(253,230,138,0.80)', textTransform: 'uppercase', fontWeight: '700', letterSpacing: 1, textAlign: 'center' },
+  clockText: { fontSize: 11, fontVariant: ['tabular-nums'], textAlign: 'center' },
+  clockActive: { color: '#fff' },
+  clockIdle: { color: 'rgba(255,255,255,0.50)' },
+  clockSep: { color: 'rgba(255,255,255,0.30)' },
   passNotice: { fontSize: 8, color: 'rgba(255,255,255,0.50)', textTransform: 'uppercase', letterSpacing: 2 },
+  startGameBtn: {
+    width: '100%',
+    maxWidth: 420,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: 'rgba(16,185,129,0.20)',
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.30)',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  startGameText: { color: '#a7f3d0', fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 2 },
 
   boardPad: { padding: 2 },
   noticeBox: { height: 32, justifyContent: 'center', marginTop: 8 },
@@ -431,6 +633,74 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     textTransform: 'uppercase',
   },
+  finalizeBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(254,243,199,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(253,230,138,0.30)',
+    alignItems: 'center',
+  },
+  finalizeText: {
+    fontFamily: SERIF,
+    color: C.amber100,
+    fontSize: 10,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+  },
+
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.60)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  modalCard: {
+    backgroundColor: '#151515',
+    borderWidth: 1,
+    borderColor: C.white10,
+    borderRadius: 16,
+    padding: 16,
+    width: '100%',
+    maxWidth: 420,
+  },
+  modalTitle: { fontFamily: SERIF, fontSize: 20, color: C.amber50, textAlign: 'center', letterSpacing: 0.5 },
+  modalRules: { fontSize: 8, color: C.white20, textTransform: 'uppercase', letterSpacing: 2, textAlign: 'center', marginTop: 4, marginBottom: 12 },
+  resultRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+  resultCard: { flex: 1, padding: 14, borderRadius: 16, borderWidth: 1 },
+  resultCardWinner: { backgroundColor: 'rgba(254,243,199,0.03)', borderColor: 'rgba(253,230,138,0.20)' },
+  resultCardLoser: { backgroundColor: 'rgba(0,0,0,0.20)', borderColor: C.white05, opacity: 0.6 },
+  resultHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  resultName: { fontSize: 10, color: 'rgba(255,255,255,0.40)', textTransform: 'uppercase', fontWeight: '700', letterSpacing: 2 },
+  winnerBadge: {
+    marginLeft: 'auto',
+    fontSize: 8,
+    color: '#fde68a',
+    backgroundColor: 'rgba(253,230,138,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(253,230,138,0.20)',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    textTransform: 'uppercase',
+    fontWeight: '700',
+    overflow: 'hidden',
+  },
+  resultLine: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  resultLabel: { fontSize: 11, color: 'rgba(255,255,255,0.30)' },
+  resultValue: { fontSize: 11, color: C.amber100, fontVariant: ['tabular-nums'] },
+  resultTotal: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    borderTopWidth: 1,
+    borderTopColor: C.white05,
+    paddingTop: 10,
+    marginTop: 6,
+  },
+  resultTotalLabel: { fontSize: 9, color: C.white20, textTransform: 'uppercase', fontFamily: SERIF },
+  resultTotalValue: { fontSize: 24, color: C.amber50, fontVariant: ['tabular-nums'] },
+  modalBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', borderWidth: 1 },
+  modalBtnGold: { backgroundColor: 'rgba(254,243,199,0.10)', borderColor: 'rgba(253,230,138,0.20)' },
+  modalBtnGoldText: { color: C.amber100, fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700' },
+  modalBtnGhost: { borderColor: C.white10 },
+  modalBtnGhostText: { color: C.white30, fontSize: 10, textTransform: 'uppercase', letterSpacing: 2 },
 });
 
 export default GameScreen;

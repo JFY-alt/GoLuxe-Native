@@ -24,6 +24,8 @@ interface BoardProps {
   /** Tutorial step 7: numbered counting badges, revealed progressively. */
   countBadges?: { x: number; y: number; c: 'b' | 'w' }[] | null;
   countShown?: number;
+  /** Scoring mode: stones marked dead render dimmed with a red X. */
+  deadStones?: Set<string> | null;
 }
 
 /**
@@ -46,6 +48,7 @@ const Board: React.FC<BoardProps> = ({
   territoryWash = null,
   countBadges = null,
   countShown = 0,
+  deadStones = null,
 }) => {
   const size = board.length;
 
@@ -111,13 +114,25 @@ const Board: React.FC<BoardProps> = ({
         );
 
         if (stone) {
+          const isDead = !!deadStones?.has(key);
           els.push(
             <View
               key={key}
-              style={{ position: 'absolute', left: cx - stoneD / 2, top: cy - stoneD / 2, zIndex: 20 }}
+              style={{
+                position: 'absolute',
+                left: cx - stoneD / 2,
+                top: cy - stoneD / 2,
+                zIndex: 20,
+                opacity: isDead ? 0.4 : 1,
+              }}
             >
               <Stone color={stone} size={stoneD} />
-              {lastMove?.x === x && lastMove?.y === y && (
+              {isDead && (
+                <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
+                  <Text style={{ color: 'rgba(239,68,68,0.85)', fontSize: stoneD * 0.55, fontWeight: '700' }}>✕</Text>
+                </View>
+              )}
+              {!isDead && lastMove?.x === x && lastMove?.y === y && (
                 <View
                   style={[
                     styles.lastMove,

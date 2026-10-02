@@ -4,18 +4,21 @@ import MainMenu from './screens/MainMenu';
 import GameModeMenu, { GameMode } from './screens/GameModeMenu';
 import AiSetupMenu, { AiConfig } from './screens/AiSetupMenu';
 import PassAndPlaySubMenu from './screens/PassAndPlaySubMenu';
+import TimedSetupMenu from './screens/TimedSetupMenu';
 import WhatIsGoMenu from './screens/WhatIsGoMenu';
 import StudyMenu from './screens/StudyMenu';
 import SenseiScreen from './screens/SenseiScreen';
 import TutorialScreen from './screens/TutorialScreen';
 import GameScreen from './screens/GameScreen';
 import { C } from './theme';
+import { TimeSettings } from './types';
 
 type Screen =
   | 'menu'
   | 'modes'
   | 'aiSetup'
   | 'passPlaySub'
+  | 'timedSetup'
   | 'whatIsGo'
   | 'howToPlay'
   | 'study'
@@ -26,12 +29,14 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('menu');
   const [mode, setMode] = useState<'ai' | '2p'>('2p');
   const [aiConfig, setAiConfig] = useState<AiConfig | null>(null);
+  const [timeSettings, setTimeSettings] = useState<TimeSettings | null>(null);
   const [senseiTopic, setSenseiTopic] = useState<string>('fundamentals');
   const [gameKey, setGameKey] = useState(0);
 
-  const startGame = (m: 'ai' | '2p', cfg: AiConfig | null) => {
+  const startGame = (m: 'ai' | '2p', cfg: AiConfig | null, ts: TimeSettings | null = null) => {
     setMode(m);
     setAiConfig(cfg);
+    setTimeSettings(ts);
     setGameKey((k) => k + 1);
     setScreen('game');
   };
@@ -62,8 +67,14 @@ export default function App() {
       )}
       {screen === 'passPlaySub' && (
         <PassAndPlaySubMenu
-          onSelectSubMode={() => startGame('2p', null)}
+          onSelectSubMode={(sub) => (sub === 'timed' ? setScreen('timedSetup') : startGame('2p', null))}
           onBack={() => setScreen('modes')}
+        />
+      )}
+      {screen === 'timedSetup' && (
+        <TimedSetupMenu
+          onStart={(settings) => startGame('2p', null, settings)}
+          onBack={() => setScreen('passPlaySub')}
         />
       )}
       {screen === 'whatIsGo' && (
@@ -93,7 +104,7 @@ export default function App() {
         />
       )}
       {screen === 'game' && (
-        <GameScreen key={gameKey} mode={mode} aiConfig={aiConfig} onExit={() => setScreen('menu')} />
+        <GameScreen key={gameKey} mode={mode} aiConfig={aiConfig} timeSettings={timeSettings} onExit={() => setScreen('menu')} />
       )}
     </SafeAreaView>
   );
