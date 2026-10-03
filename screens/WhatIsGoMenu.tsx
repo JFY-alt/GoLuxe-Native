@@ -1,7 +1,10 @@
+import {SafeAreaView} from 'react-native-safe-area-context';
+import MenuBackdrop from '../components/MenuBackdrop';
+import {MENU_VIDEOS} from '../config/homeCinema';
 import { AnimatedView } from '../ui';
 import { useWindowDimensions } from 'react-native';
 import { FadeIn, FadeInDown, Easing, FadeInRight, FadeInLeft, useSharedValue, useAnimatedProps, withDelay, withTiming } from 'react-native-reanimated';
-import { Pressable, StatusBar, Text, View, LinearGradient } from '../ui';
+import { Pressable, StatusBar, Text, View } from '../ui';
 import React, { useState, useRef } from 'react';
 import { Dimensions, StyleSheet } from 'react-native';
 
@@ -150,6 +153,7 @@ const DecoVisual: React.FC<{ chapter: number }> = ({ chapter }) => {
 
 /** Matches the web WhatIsGoMenu: 4 swipeable chapters, dots, gold CTA on last chapter. */
 const WhatIsGoMenu: React.FC<WhatIsGoMenuProps> = ({ onBack, onBegin, onHowToPlay }) => {
+  const light=useTheme().mode==='light';
   const [chapter, setChapter] = useState(0);
   const [direction, setDirection] = useState(1);
   const touchX = useRef<number | null>(null);
@@ -159,13 +163,8 @@ const WhatIsGoMenu: React.FC<WhatIsGoMenuProps> = ({ onBack, onBegin, onHowToPla
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" />
-      <LinearGradient
-        colors={['rgba(254,243,199,0.05)', 'rgba(254,243,199,0)']}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 0.4 }}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
+      <MenuBackdrop source={MENU_VIDEOS.whatIsGo} light={light} videoOpacity={.55}/>
+      <SafeAreaView style={{flex:1}} edges={['top','right','bottom','left']}>
 
       <View style={styles.topBar}>
         <Pressable onPress={onBack} style={styles.topBtn}>
@@ -179,7 +178,7 @@ const WhatIsGoMenu: React.FC<WhatIsGoMenuProps> = ({ onBack, onBegin, onHowToPla
       <AnimatedView key={chapter} entering={(direction>0?FadeInRight:FadeInLeft).duration(700).withInitialValues({transform:[{translateX:direction*40}]})} style={styles.body} onTouchStart={(e:any)=>{touchX.current=e.nativeEvent.pageX;}} onTouchEnd={(e:any)=>{if(touchX.current===null)return;const dx=e.nativeEvent.pageX-touchX.current;touchX.current=null;if(dx < -60)goTo(chapter+1);else if(dx > 60)goTo(chapter-1);}}>
         <DecoVisual chapter={chapter} />
         <AnimatedView entering={FadeInDown.duration(700).delay(150).withInitialValues({transform:[{translateY:8}]})}><Text style={styles.kicker}>{c.kicker}</Text></AnimatedView>
-        <AnimatedView entering={FadeInDown.duration(700).delay(300).withInitialValues({transform:[{translateY:16}]})}><Text style={styles.title}>{c.title}</Text></AnimatedView>
+        <AnimatedView entering={FadeInDown.duration(700).delay(300).withInitialValues({transform:[{translateY:16}]})}><Text style={[styles.title,{fontSize:chapter===3?24:30}]}>{c.title}</Text></AnimatedView>
         <AnimatedView entering={FadeIn.duration(700).delay(450)} style={styles.rule} />
         <AnimatedView entering={FadeInDown.duration(700).delay(550).withInitialValues({transform:[{translateY:16}]})}><Text style={styles.paragraph}>{c.body}</Text></AnimatedView>
         {chapter === 3 && (
@@ -207,12 +206,13 @@ const WhatIsGoMenu: React.FC<WhatIsGoMenuProps> = ({ onBack, onBegin, onHowToPla
           <Text style={styles.arrowText}>›</Text>
         </Pressable>
       </View>
+      </SafeAreaView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg },
+  root: { flex: 1, backgroundColor: '#000' },
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 24 },
   topBtn: { padding: 8 },
   topBtnText: { color: C.white40, fontSize: 12, fontFamily: SERIF, letterSpacing: 2.2, textTransform: 'uppercase' },

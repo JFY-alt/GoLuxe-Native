@@ -25,6 +25,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   if (!ready) return null;
   return <ThemeContext.Provider value={value}>{children}{fading && <Animated.View pointerEvents="none" exiting={FadeOut.duration(420)} style={[Native.StyleSheet.absoluteFill, { backgroundColor: mode === 'light' ? '#fafaf9' : '#0d0d0d', zIndex: 2000 }]} />}</ThemeContext.Provider>;
 }
+export function ThemeScope({mode,children}:{mode:ThemeMode;children:React.ReactNode}){const theme=useContext(ThemeContext);return <ThemeContext.Provider value={{...theme,mode}}>{children}</ThemeContext.Provider>;}
 // Matches the web theme-light CSS. Artwork and board surfaces use native components directly.
 function lightColor(value: any, key: string) {
   if (typeof value !== 'string') return value;
