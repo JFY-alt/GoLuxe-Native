@@ -1,4 +1,7 @@
-import { Pressable, ScrollView, StatusBar, Text, View, LinearGradient } from '../ui';
+import {SafeAreaView} from 'react-native-safe-area-context';
+import MenuBackdrop from '../components/MenuBackdrop';
+import {MENU_VIDEOS} from '../config/homeCinema';
+import { Pressable, ScrollView, StatusBar, Text, View } from '../ui';
 import React, { useState } from 'react';
 import { StyleSheet } from 'react-native';
 
@@ -32,13 +35,8 @@ const AiSetupMenu: React.FC<AiSetupMenuProps> = ({ onStart, onBack }) => {
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" />
-      <LinearGradient
-        colors={['rgba(254,243,199,0.05)', 'rgba(254,243,199,0)']}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 0.4 }}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
+      <MenuBackdrop source={MENU_VIDEOS.aiSetup}/>
+      <SafeAreaView style={{flex:1}} edges={['top','right','bottom','left']}>
       <ScrollView contentContainerStyle={styles.center} showsVerticalScrollIndicator={false}>
         <Text style={styles.heading}>Vs. AI Setup</Text>
 
@@ -96,25 +94,26 @@ const AiSetupMenu: React.FC<AiSetupMenuProps> = ({ onStart, onBack }) => {
           <Text style={styles.backText}>Back</Text>
         </Pressable>
       </ScrollView>
+      </SafeAreaView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg },
+  root: { flex: 1, backgroundColor: '#000' },
   center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  heading: { fontFamily: SERIF, fontSize: 30, color: C.amber50, letterSpacing: -0.5, marginBottom: 48 },
+  heading: { fontFamily: SERIF, fontSize: 24, color: C.amber50, letterSpacing: -0.5, marginBottom: 24 },
   section: { width: '100%', maxWidth: 480, marginBottom: 24 },
-  label: { fontSize: 10, color: C.white40, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700', marginLeft: 4, marginBottom: 12 },
-  row: { flexDirection: 'row', gap: 16 },
+  label: { fontSize: 10, color: C.white40, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700', marginLeft: 4, marginBottom: 8 },
+  row: { flexDirection: 'row', gap: 12 },
   colorBtn: {
     flex: 1,
-    padding: 16,
+    padding: 12,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: C.white10,
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   colorBtnActive: { backgroundColor: C.white10, borderColor: 'rgba(255,255,255,0.30)' },
   dot: { width: 24, height: 24, borderRadius: 12, borderWidth: 1 },

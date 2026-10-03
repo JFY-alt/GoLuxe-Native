@@ -1,5 +1,8 @@
+import {SafeAreaView} from 'react-native-safe-area-context';
+import MenuBackdrop from '../components/MenuBackdrop';
+import {MENU_VIDEOS} from '../config/homeCinema';
 import MenuIcon from '../components/MenuIcon';
-import { Pressable, ScrollView, StatusBar, Text, View, LinearGradient } from '../ui';
+import { Pressable, ScrollView, StatusBar, Text, View } from '../ui';
 import React from 'react';
 import { StyleSheet } from 'react-native';
 
@@ -17,14 +20,8 @@ const GameModeMenu: React.FC<GameModeMenuProps> = ({ onSelectMode, onBack }) => 
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" />
-      <LinearGradient colors={['#0d0d0d', '#0d0d0d']} style={StyleSheet.absoluteFill} />
-      <LinearGradient
-        colors={['rgba(254,243,199,0.05)', 'rgba(254,243,199,0)']}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 0.4 }}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
+      <MenuBackdrop source={MENU_VIDEOS.modes}/>
+      <SafeAreaView style={{flex:1}} edges={['top','right','bottom','left']}>
       <ScrollView contentContainerStyle={styles.center} showsVerticalScrollIndicator={false}>
         <Text style={styles.heading}>Select Mode</Text>
         <View style={styles.cards}>
@@ -60,12 +57,13 @@ const GameModeMenu: React.FC<GameModeMenuProps> = ({ onSelectMode, onBack }) => 
           <Text style={styles.backText}>Back</Text>
         </Pressable>
       </ScrollView>
+      </SafeAreaView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg },
+  root: { flex: 1, backgroundColor: '#000' },
   center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   heading: { fontFamily: SERIF, fontSize: 30, color: C.amber50, letterSpacing: -0.5, marginBottom: 48 },
   cards: { width: '100%', maxWidth: 420, gap: 16 },

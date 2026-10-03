@@ -1,4 +1,7 @@
-import { Pressable, ScrollView, StatusBar, Text, View, LinearGradient } from '../ui';
+import {SafeAreaView} from 'react-native-safe-area-context';
+import MenuBackdrop from '../components/MenuBackdrop';
+import {MENU_VIDEOS} from '../config/homeCinema';
+import { Pressable, ScrollView, StatusBar, Text, View } from '../ui';
 import React, { useState } from 'react';
 import { StyleSheet } from 'react-native';
 
@@ -88,13 +91,8 @@ const TimedSetupMenu: React.FC<TimedSetupMenuProps> = ({ onStart, onBack }) => {
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" />
-      <LinearGradient
-        colors={['rgba(254,243,199,0.05)', 'rgba(254,243,199,0)']}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 0.4 }}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
+      <MenuBackdrop source={MENU_VIDEOS.timedSetup}/>
+      <SafeAreaView style={{flex:1}} edges={['top','right','bottom','left']}>
       <ScrollView contentContainerStyle={styles.center} showsVerticalScrollIndicator={false}>
         <Text style={styles.heading}>Timed Go Setup</Text>
 
@@ -205,14 +203,15 @@ const TimedSetupMenu: React.FC<TimedSetupMenuProps> = ({ onStart, onBack }) => {
           <Text style={styles.backText}>Back</Text>
         </Pressable>
       </ScrollView>
+      </SafeAreaView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg },
-  center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  heading: { fontFamily: SERIF, fontSize: 24, color: C.amber50, letterSpacing: -0.5, marginBottom: 20 },
+  root: { flex: 1, backgroundColor: '#000' },
+  center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 16 },
+  heading: { fontFamily: SERIF, fontSize: 24, color: C.amber50, letterSpacing: -0.5, marginBottom: 16 },
   tabs: {
     flexDirection: 'row',
     flexWrap: 'wrap',

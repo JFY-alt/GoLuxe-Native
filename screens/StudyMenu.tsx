@@ -1,4 +1,7 @@
-import { Pressable, ScrollView, StatusBar, Text, View, LinearGradient } from '../ui';
+import {SafeAreaView} from 'react-native-safe-area-context';
+import MenuBackdrop from '../components/MenuBackdrop';
+import {MENU_VIDEOS} from '../config/homeCinema';
+import { Pressable, ScrollView, StatusBar, Text, View } from '../ui';
 import React, { useCallback, useState } from 'react';
 import { StyleSheet } from 'react-native';
 
@@ -85,13 +88,8 @@ const StudyMenu: React.FC<StudyMenuProps> = ({ onSelect, onBack }) => {
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" />
-      <LinearGradient
-        colors={['rgba(254,243,199,0.05)', 'rgba(254,243,199,0)']}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 0.4 }}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
+      <MenuBackdrop source={MENU_VIDEOS.study}/>
+      <SafeAreaView style={{flex:1}} edges={['top','right','bottom','left']}>
       <ScrollView contentContainerStyle={styles.center} showsVerticalScrollIndicator={false}>
         <Text style={styles.heading}>Study Room</Text>
         <View style={styles.cards}>
@@ -114,12 +112,13 @@ const StudyMenu: React.FC<StudyMenuProps> = ({ onSelect, onBack }) => {
           <Text style={styles.backText}>Back</Text>
         </Pressable>
       </ScrollView>
+      </SafeAreaView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg },
+  root: { flex: 1, backgroundColor: '#000' },
   center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   heading: { fontFamily: SERIF, fontSize: 24, color: C.amber50, letterSpacing: -0.5, marginBottom: 20 },
   cards: { width: '100%', maxWidth: 420, gap: 12 },

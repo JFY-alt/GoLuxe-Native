@@ -1,3 +1,4 @@
+import {SafeAreaView} from 'react-native-safe-area-context';
 import GuideActions from '../components/GuideActions';
 import GuideHeader from '../components/GuideHeader';
 import { useWindowDimensions } from 'react-native';
@@ -158,10 +159,12 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
   if (!lesson || !beat) {
     return (
       <View style={styles.root}>
+        <SafeAreaView style={{flex:1}} edges={['top','right','bottom','left']}>
         <Text style={styles.error}>Lesson not found.</Text>
         <Pressable onPress={onExit} style={styles.backBtn}>
           <Text style={styles.backText}>Back</Text>
         </Pressable>
+        </SafeAreaView>
       </View>
     );
   }
@@ -180,6 +183,7 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
+      <SafeAreaView style={{flex:1}} edges={['top','right','bottom','left']}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <GuideHeader/>
         <View style={styles.boardPad}>
@@ -251,6 +255,7 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
         </View>
         <GuideActions width={BOARD_PX}/>
       </ScrollView>
+      </SafeAreaView>
     </View>
   );
 };

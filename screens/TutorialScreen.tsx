@@ -1,3 +1,4 @@
+import {SafeAreaView} from 'react-native-safe-area-context';
 import GuideActions from '../components/GuideActions';
 import GuideHeader from '../components/GuideHeader';
 import { useWindowDimensions } from 'react-native';
@@ -500,6 +501,7 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
+      <SafeAreaView style={{flex:1}} edges={['top','right','bottom','left']}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <GuideHeader/>
         <View style={styles.boardPad}>
@@ -575,6 +577,7 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
         )}
         <GuideActions width={BOARD_PX} onPass={onPassPress}/>
       </ScrollView>
+      </SafeAreaView>
 
       {/* Graduation modal — web: animate-in zoom-in duration-300 */}
       <Modal visible={tutStep === 11} transparent animationType="fade">

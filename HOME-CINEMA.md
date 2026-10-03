@@ -59,8 +59,8 @@ The app shows the opening once per app session. When someone returns to the home
 
 ## App integration status
 
-The home theme toggle has been removed. Home uses a fixed dark treatment and the game settings retain their existing theme control. The video player, playback-driven reveal cue, blur layer, foreground menu, and pause/error handling are wired using Expo's video and blur APIs. No dojo footage has been generated or supplied yet. Until `dojo-reel.mp4` is supplied and attached, the app presents a usable dark menu without a video.
+The current preview follows the official web films and the approved once-per-session intro. It streams seven scenes with native caching, reveals the home menu at five seconds, and returns home with blur/menu already present and playback resumed. Menus remain usable on video failure. See WEB-LOOK-SYNC.md for the exact reference and test status.
 
-After receiving the finished film, place it under native `assets/dojo-reel.mp4` and set `HOME_REEL_SOURCE` in `config/homeCinema.ts` to `require('../assets/dojo-reel.mp4')`. Match `revealAtSeconds` to the final cue sheet and `repeatFromSeconds` to the continuing-game section. Verify the full film on the iPhone, including backgrounding, returning home, the end-of-film transition, and offline startup.
+The three-minute production brief above remains an optional future film specification. Replacing the footage does not require changing the intro-once state; a new reveal cue is configured in config/homeCinema.ts.
 
 API references: [Expo Video, SDK 57](https://docs.expo.dev/versions/v57.0.0/sdk/video/) and [Expo BlurView, SDK 57](https://docs.expo.dev/versions/v57.0.0/sdk/blur-view/).

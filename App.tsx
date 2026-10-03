@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ThemeProvider, useTheme, View, StatusBar } from './ui';
+import { ThemeProvider, ThemeScope, useTheme, View, StatusBar } from './ui';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { BackHandler, ActivityIndicator, StatusBar as NativeStatusBar } from 'react-native';
 import { useFonts } from 'expo-font';
@@ -35,20 +35,18 @@ type Screen =
 function Navigator() {
   const { mode: themeMode } = useTheme();
   const opacity = useSharedValue(0);
-  const scale = useSharedValue(1);
-  const routeStyle = useAnimatedStyle(() => ({ opacity: opacity.value, transform: [{ scale: scale.value }] }));
+  // Keep full-screen video and blur at the viewport size throughout navigation.
+  const routeStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
   const navTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [screen, changeScreen] = useState<Screen>('menu');
   const introSeen=useRef(false);
+  const cinemaMenu=['menu','modes','aiSetup','passPlaySub','timedSetup','study'].includes(screen);
   const setScreen = (next: Screen) => {
     if (navTimer.current) return;
     opacity.value = withTiming(0, { duration: 500 });
-    scale.value = withTiming(.95, { duration: 500 });
     navTimer.current = setTimeout(() => {
       changeScreen(next);
-      scale.value = next==='menu'?1:.95;
       opacity.value = withTiming(1, { duration: next==='menu'?700:500 });
-      scale.value = withTiming(1, { duration: 500 });
       navTimer.current = null;
     }, 500);
   };
@@ -83,10 +81,11 @@ function Navigator() {
   };
 
   return (
-    <SafeAreaView edges={screen==='menu'?[]:['top','right','bottom','left']} style={[styles.root, { backgroundColor: screen==='menu'?'#000':themeMode === 'light' ? '#fafaf9' : C.bg }]}>{screen==='menu'?<NativeStatusBar barStyle="light-content" backgroundColor="#000"/>:<StatusBar />}<Animated.View style={[{ flex: 1 }, routeStyle]}>
-      {screen === 'menu' && (
+    <SafeAreaView edges={screen==='game'?['top','right','bottom','left']:[]} style={[styles.root, { backgroundColor: cinemaMenu?'#000':themeMode === 'light' ? '#fafaf9' : C.bg }]}>{cinemaMenu?<NativeStatusBar barStyle="light-content" backgroundColor="#000"/>:<StatusBar />}<Animated.View style={[{ flex: 1 }, routeStyle]}><ThemeScope mode={cinemaMenu?'dark':themeMode}>
+      <View pointerEvents={screen==='menu'?'auto':'none'} accessibilityElementsHidden={screen!=='menu'} importantForAccessibility={screen==='menu'?'auto':'no-hide-descendants'} style={[StyleSheet.absoluteFill,{opacity:screen==='menu'?1:0}]}>
         <ScreenFade key="menu">
           <MainMenu
+            active={screen==='menu'}
             introSeen={introSeen.current}
             onIntroSeen={()=>{introSeen.current=true;}}
             onPlay={() => setScreen('modes')}
@@ -95,7 +94,7 @@ function Navigator() {
             onStudy={() => setScreen('study')}
           />
         </ScreenFade>
-      )}
+      </View>
       {screen === 'modes' && (
         <ScreenFade key="modes">
           <GameModeMenu onSelectMode={handleSelectMode} onBack={() => setScreen('menu')} />
@@ -162,7 +161,7 @@ function Navigator() {
       {screen === 'game' && (
         <GameScreen key={gameKey} mode={mode} aiConfig={aiConfig} timeSettings={timeSettings} onExit={() => setScreen('menu')} />
       )}
-    </Animated.View></SafeAreaView>
+    </ThemeScope></Animated.View></SafeAreaView>
   );
 }
 
