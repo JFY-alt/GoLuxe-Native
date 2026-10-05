@@ -1,11 +1,15 @@
 import GlassBackdrop from './GlassBackdrop';
+import Dialog from './Dialog';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import { ThemeToggle, useTheme, TextInput } from '../ui';
+import { useTheme, TextInput } from '../ui';
 import { Pressable, ScrollView, Text, View, LinearGradient, AnimatedView } from '../ui';
-import React, { useState } from 'react';
-import { Modal, StyleSheet } from 'react-native';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import React, { useRef, useState, useEffect } from 'react';
+import { Modal, StyleSheet, Image, Animated as NativeAnimated, ScrollView as NativeScrollView } from 'react-native';
+import { FadeIn, FadeOut } from 'react-native-reanimated';
 
+import Svg, {Circle, Path, Polyline} from 'react-native-svg';
+import Slider from '@react-native-community/slider';
+import {BlurView} from 'expo-blur';
 import { C, SERIF } from '../theme';
 
 export type BoardTheme = 'espresso' | 'classic' | 'midnight' | 'washi' | 'maple' | 'riverstone';
@@ -43,6 +47,8 @@ interface SidebarProps {
   maxHandicap: number;
   komiDirection: KomiDirection;
   setKomiDirection: (d: KomiDirection) => void;
+  customKomi: string;
+  setCustomKomi: (value: string) => void;
   komiValue: number;
   setKomiValue: (v: number) => void;
   boardTheme: BoardTheme;
@@ -58,20 +64,26 @@ const SectionTitle: React.FC<{ children: string; onHelp?: () => void }> = ({ chi
     <Text style={styles.secTitle}>{children}</Text>
     {onHelp && (
       <Pressable onPress={onHelp} style={styles.helpBtn} hitSlop={8}>
-        <Text style={styles.helpGlyph}>?</Text>
+        <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="rgba(253,230,138,.4)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><Circle cx={12} cy={12} r={10}/><Path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><Path d="M12 17h.01"/></Svg>
       </Pressable>
     )}
   </View>
 );
 
-const ToggleRow: React.FC<{ label: string; value: boolean; onToggle: () => void }> = ({ label, value, onToggle }) => (
-  <Pressable onPress={onToggle} style={[styles.toggleRow, value && styles.toggleRowOn]}>
+const ToggleRow: React.FC<{ label: string; value: boolean; onToggle: () => void }> = ({ label, value, onToggle }) => {
+  const position = useRef(new NativeAnimated.Value(value ? 16 : 0)).current;
+  useEffect(() => {
+    const animation = NativeAnimated.timing(position, {toValue:value ? 16 : 0,duration:300,useNativeDriver:true});
+    animation.start();
+    return () => animation.stop();
+  }, [value, position]);
+  return <Pressable accessibilityRole="switch" accessibilityLabel={label} accessibilityState={{checked:value}} onPress={onToggle} style={({pressed})=>[styles.toggleRow,value&&styles.toggleRowOn,pressed&&styles.pressed]}>
     <Text style={[styles.toggleLabel, value && styles.toggleLabelOn]}>{label}</Text>
     <View style={[styles.switch, value && styles.switchOn]}>
-      <View style={[styles.knob, value ? { left: 20 } : { left: 4 }]} />
+      <NativeAnimated.View style={[styles.knob,{left:4,transform:[{translateX:position}]}]} />
     </View>
-  </Pressable>
-);
+  </Pressable>;
+};
 
 const HelpModal: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({
   title,
@@ -102,20 +114,19 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
   const { mode: themeMode } = useTheme();
   const visibleThemes = themeMode === 'light' ? ['washi','maple','riverstone'] : ['espresso','classic','midnight'];
   const insets = useSafeAreaInsets();
-  const [customKomi, setCustomKomi] = useState('');
+  const {customKomi, setCustomKomi} = p;
+  const scrollOffset = useRef(0);
+  const scrollRef = useRef<NativeScrollView>(null);
   const [help, setHelp] = useState<null | 'fundamentals' | 'concepts' | 'practice' | 'handicap' | 'sgf'>(null);
   const [confirmHandicap, setConfirmHandicap] = useState(false);
   if (!p.visible) return null;
 
-  const stepKomi = (d: number) => {
-    const v = Math.max(0, Math.round((p.komiValue + d) * 2) / 2);
-    p.setKomiValue(v);setCustomKomi('');
-  };
-
   return (
     <AnimatedView entering={FadeIn.duration(500)} exiting={FadeOut.duration(500)} style={styles.overlay}>
+      <BlurView intensity={32} tint={themeMode === 'light' ? 'light' : 'dark'} style={StyleSheet.absoluteFill} pointerEvents="none" />
       {/* tap outside content to close — web: overlay onClick closes */}
       <Pressable style={StyleSheet.absoluteFill} onPress={p.onClose} />
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}><Image source={require('../assets/dark-wood.png')} resizeMode="repeat" style={[StyleSheet.absoluteFill,{opacity:.20}]} /></View>
       {/* amber wash + texture, like the web sidebar */}
       <LinearGradient
         colors={['rgba(254,243,199,0.05)', 'rgba(254,243,199,0)']}
@@ -126,6 +137,10 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
       />
       <View style={{flex:1, marginTop:insets.top+60, marginBottom:insets.bottom, overflow:'hidden'}}>
       <ScrollView
+        ref={scrollRef}
+        onScroll={e=>{scrollOffset.current=e.nativeEvent.contentOffset.y;}}
+        scrollEventThrottle={16}
+        onLayout={()=>scrollRef.current?.scrollTo({y:scrollOffset.current,animated:false})}
         style={{flex:1}}
         bounces
         contentContainerStyle={styles.scroll}
@@ -146,11 +161,12 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
           <View style={styles.section}>
             <SectionTitle>Ruleset</SectionTitle>
             <View style={styles.segRow}>
-              {(['japanese', 'chinese'] as const).map((rs) => (
+              {(['chinese', 'japanese'] as const).map((rs) => (
                 <Pressable
                   key={rs}
                   onPress={() => p.onRuleset(rs)}
-                  style={[styles.segBtn, p.ruleset === rs && styles.segBtnOn]}
+                  accessibilityRole="button" accessibilityState={{selected:p.ruleset===rs}}
+                  style={({pressed})=>[styles.segBtn, p.ruleset === rs && styles.segBtnOn,pressed&&styles.pressed]}
                 >
                   <Text style={[styles.segText, p.ruleset === rs && styles.segTextOn]}>{rs}</Text>
                 </Pressable>
@@ -174,7 +190,7 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
                     <Pressable
                       key={t}
                       onPress={() => p.onHandicapType(t)}
-                      style={[styles.miniSeg, p.handicapType === t && styles.miniSegOn]}
+                      style={({pressed})=>[styles.miniSeg,p.handicapType===t&&styles.miniSegOn,pressed&&styles.pressed]}
                     >
                       <Text style={[styles.miniSegText, p.handicapType === t && styles.miniSegTextOn]}>{t}</Text>
                     </Pressable>
@@ -184,18 +200,13 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
                   <Text style={styles.countLabel}>Extra Stones (+{p.handicapCount})</Text>
                   <Text style={styles.countTotal}>Total {p.handicapCount + 1}</Text>
                 </View>
-                <View style={styles.stepper}>
-                  <Pressable onPress={() => p.onHandicapCount(Math.max(1, p.handicapCount - 1))} style={styles.stepBtn}>
-                    <Text style={styles.stepGlyph}>−</Text>
-                  </Pressable>
-                  <Text style={styles.stepValue}>{p.handicapCount}</Text>
-                  <Pressable onPress={() => p.onHandicapCount(Math.min(p.maxHandicap, p.handicapCount + 1))} style={styles.stepBtn}>
-                    <Text style={styles.stepGlyph}>+</Text>
-                  </Pressable>
-                </View>
+                <Slider accessibilityLabel="Extra handicap stones" minimumValue={1} maximumValue={p.maxHandicap} step={1}
+                  value={Math.min(p.handicapCount,p.maxHandicap)} onValueChange={p.onHandicapCount}
+                  minimumTrackTintColor={themeMode==='light'?'#92400e':C.amber200} maximumTrackTintColor={C.white10} thumbTintColor={themeMode==='light'?'#92400e':C.amber200}
+                  style={{width:'100%',height:32}} />
               </AnimatedView>
             )}
-            <View style={[styles.komiBlock, p.handicapOn && { opacity: 0.4 }]}>
+            <View pointerEvents={p.handicapOn ? 'none' : 'auto'} style={[styles.komiBlock, p.handicapOn && { opacity: 0.4 }]}>
               <View style={styles.komiHead}>
                 <Text style={styles.komiTitle}>Komi</Text>
                 {p.handicapOn ? (
@@ -209,7 +220,7 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
                   <Pressable
                     key={d}
                     onPress={() => p.setKomiDirection(d)}
-                    style={[styles.komiSeg, p.komiDirection === d && styles.komiSegOn]}
+                    style={({pressed})=>[styles.komiSeg,p.komiDirection===d&&styles.komiSegOn,pressed&&styles.pressed]}
                   >
                     <Text style={[styles.komiSegText, p.komiDirection === d && styles.komiSegTextOn]}>
                       {d === 'none' ? 'None' : d === 'reverse' ? 'Reverse' : 'Standard'}
@@ -217,20 +228,20 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
                   </Pressable>
                 ))}
               </View>
-              {p.komiDirection !== 'none' && !p.handicapOn && (
+              {p.komiDirection !== 'none' && (
                 <AnimatedView entering={FadeIn.duration(300)} style={{ gap: 8 }}>
                   <View style={styles.segRow}>
                     {[6.5, 7.5].map((v) => (
                       <Pressable
                         key={v}
-                        onPress={() => p.setKomiValue(v)}
-                        style={[styles.miniSeg, p.komiValue === v && styles.miniSegOn]}
+                        onPress={() => {p.setKomiValue(v);setCustomKomi('');}}
+                        style={({pressed})=>[styles.miniSeg,p.komiValue===v&&customKomi===''&&styles.miniSegOn,pressed&&styles.pressed]}
                       >
-                        <Text style={[styles.miniSegText, p.komiValue === v && styles.miniSegTextOn]}>{v}</Text>
+                        <Text style={[styles.miniSegText, p.komiValue === v && customKomi === '' && styles.miniSegTextOn]}>{v}</Text>
                       </Pressable>
                     ))}
                   </View>
-                  <TextInput accessibilityLabel="Custom komi" value={customKomi} onChangeText={text=>{setCustomKomi(text);const n=parseFloat(text);p.setKomiValue(Number.isFinite(n)?Math.max(0,n):0);}} placeholder="Custom" keyboardType="decimal-pad" style={{padding:12,borderWidth:1,borderColor:C.white10,borderRadius:8,color:C.amber50}} />
+                  <View style={{position:'relative'}}><TextInput editable={!p.handicapOn} accessibilityLabel="Custom komi" value={customKomi} onChangeText={text=>{setCustomKomi(text);const n=parseFloat(text);p.setKomiValue(Number.isFinite(n)?n:0);}} placeholder="Custom" keyboardType="decimal-pad" style={{paddingVertical:8,paddingLeft:12,paddingRight:32,borderWidth:1,borderColor:customKomi!==''?'rgba(255,255,255,.20)':C.white10,borderRadius:12,color:C.amber50,backgroundColor:'rgba(255,255,255,.03)'}} /><Text pointerEvents="none" style={{position:'absolute',right:12,top:10,fontSize:10,color:C.white20}}>PTS</Text></View>
                 </AnimatedView>
               )}
             </View>
@@ -244,7 +255,7 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
                 <Pressable
                   key={t}
                   onPress={() => p.setBoardTheme(t)}
-                  style={[styles.swatchBtn, p.boardTheme === t && styles.swatchBtnOn]}
+                  style={({pressed})=>[styles.swatchBtn,p.boardTheme===t&&styles.swatchBtnOn,pressed&&styles.pressed]}
                 >
                   <View style={[styles.swatch, { backgroundColor: SWATCH[t] }]} />
                   <Text style={[styles.swatchLabel, p.boardTheme === t && styles.swatchLabelOn]}>
@@ -259,20 +270,20 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
           <View style={styles.section}>
             <SectionTitle onHelp={() => setHelp('sgf')}>Game Record</SectionTitle>
             <View style={{ gap: 8 }}>
-              <Pressable onPress={p.onExportSgf} style={styles.recordBtn}>
+              <Pressable onPress={p.onExportSgf} style={({pressed})=>[styles.recordBtn,pressed&&styles.pressed]}>
                 <Text style={styles.recordText}>Export SGF</Text>
-                <Text style={styles.recordGlyph}>↑</Text>
+                <View style={styles.recordIcon}><Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={themeMode==='light'?'#a8a29e':C.white20} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><Path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><Polyline points="17 8 12 3 7 8"/><Path d="M12 3v12"/></Svg></View>
               </Pressable>
-              <Pressable onPress={p.onImportSgf} style={styles.recordBtn}>
+              <Pressable onPress={p.onImportSgf} style={({pressed})=>[styles.recordBtn,pressed&&styles.pressed]}>
                 <Text style={styles.recordText}>Import SGF</Text>
-                <Text style={styles.recordGlyph}>↓</Text>
+                <View style={styles.recordIcon}><Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={themeMode==='light'?'#a8a29e':C.white20} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><Path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><Polyline points="7 10 12 15 17 10"/><Path d="M12 15V3"/></Svg></View>
               </Pressable>
             </View>
           </View>
 
           {/* Exit */}
           <View style={styles.exitWrap}>
-            <Pressable onPress={p.onExitToMenu} style={({ pressed }) => [styles.exitBtn, pressed && { transform: [{ scale: 0.95 }] }]}>
+            <Pressable onPress={p.onExitToMenu} style={({ pressed }) => [styles.exitBtn, pressed && [styles.pressed,{ transform: [{ scale: 0.95 }] }]]}>
               <Text style={styles.exitText}>Back to Main Menu</Text>
             </Pressable>
           </View>
@@ -281,28 +292,12 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
       </View>
 
       {/* handicap confirm */}
-      <Modal visible={confirmHandicap} transparent animationType="fade" onRequestClose={() => setConfirmHandicap(false)}>
-        <View style={styles.confirmBg}>
-          <AnimatedView entering={FadeIn.duration(200)} style={styles.confirmCard}>
-            <Text style={styles.confirmTitle}>Change handicap?</Text>
-            <Text style={styles.confirmDesc}>Toggling handicap stones starts a new game — the current board will be cleared.</Text>
-            <View style={styles.confirmRow}>
-              <Pressable onPress={() => setConfirmHandicap(false)} style={styles.confirmGhost}>
-                <Text style={styles.confirmGhostText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  setConfirmHandicap(false);
-                  p.onToggleHandicap();
-                }}
-                style={styles.confirmGold}
-              >
-                <Text style={styles.confirmGoldText}>{p.handicapOn ? 'Remove Handicap' : 'Start Handicap Game'}</Text>
-              </Pressable>
-            </View>
-          </AnimatedView>
-        </View>
-      </Modal>
+      <Dialog onClose={()=>setConfirmHandicap(false)} dialog={confirmHandicap ? {
+        title:'Change handicap?',
+        description:'Toggling handicap stones starts a new game — the current board will be cleared.',
+        confirmLabel:p.handicapOn ? 'Remove Handicap' : 'Start Handicap Game',
+        confirm:p.onToggleHandicap,
+      } : null} />
 
       {/* help modals */}
       {help === 'fundamentals' && (
@@ -390,8 +385,10 @@ const styles = StyleSheet.create({
     zIndex: 300,
     backgroundColor: 'rgba(0,0,0,.75)',
   },
+  pressed: {backgroundColor:C.white05},
+  recordIcon: {width:32,height:32,borderRadius:16,borderWidth:1,borderColor:C.white10,alignItems:'center',justifyContent:'center'},
   scroll: { paddingTop: 20, paddingBottom: 48, alignItems: 'center' },
-  nav: { width: '100%', maxWidth: 420, paddingHorizontal: 24, gap: 40 },
+  nav: { width: '100%', maxWidth: 448, paddingHorizontal: 24, gap: 40 },
   section: {},
   secHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
   secTitle: {
