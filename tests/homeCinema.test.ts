@@ -19,7 +19,7 @@ function cinema() {
     createElement(type:any,props:any,...children:any[]){return {type,props:props||{},children};}
   };
   const exports:any={};
-  const timing={revealAtSeconds:5,repeatFromSeconds:5,openingFadeMs:1800,blurFadeMs:1600,loadingTimeoutMs:8000};
+  const timing={repeatFromSeconds:0,openingFadeMs:1800,menuDelayMs:300,loadingTimeoutMs:8000};
   const source=fs.readFileSync(new URL('../components/HomeCinema.tsx',import.meta.url),'utf8');
   vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.React}}).outputText,{
     exports,require:(name:string)=>name==='react'?react:name==='react-native'?{AppState:app,StyleSheet:{absoluteFill:{}},View:'View'}:name==='expo-blur'?{BlurView:'Blur',BlurTargetView:'Target'}:name==='expo-video'?{useVideoPlayer:(source:any,init:any)=>{const i=index++;if(!hooks[i]){hooks[i]={player};init(player);}return hooks[i].player;},VideoView:'Video'}:name==='react-native-reanimated'?{default:{View:'Animated'},Easing:{inOut:(fn:any)=>fn,ease:()=>{}},useSharedValue:(value:any)=>{const i=index++;if(!hooks[i]){hooks[i]={value};values.push(hooks[i]);}return hooks[i];},useAnimatedStyle:(fn:any)=>{index++;return fn();},withTiming:(value:any)=>value}:{HOME_CINEMA:timing},
@@ -33,18 +33,24 @@ function cinema() {
 }
 
 test('home pauses off-screen and resumes the same loaded player without re-seeking or fading',()=>{
-  const c=cinema();let tree=c.render();c.find(tree,'Video').props.onFirstFrameRender();c.player.currentTime=9.3;c.player.listeners.timeUpdate({currentTime:9.3});tree=c.render();
+  const c=cinema();let tree=c.render();c.find(tree,'Video').props.onFirstFrameRender();c.player.currentTime=9.3;c.player.listeners.timeUpdate({currentTime:9.3});c.timers.find(t=>t.ms===2100).fn();tree=c.render();
   assert.equal(c.calls,1);assert.ok(c.find(tree,'Blur'));
   const visibleOpacity=c.values[0].value,playCount=c.player.plays;
   c.render({active:false});assert.ok(c.player.pauses);assert.equal(c.player.currentTime,9.3);assert.equal(c.values[0].value,visibleOpacity);
   c.render({active:true});assert.ok(c.player.plays>playCount);assert.equal(c.player.currentTime,9.3);assert.equal(c.values[0].value,visibleOpacity);assert.equal(c.calls,1);
-  c.player.listeners.playToEnd();assert.equal(c.player.currentTime,0);assert.equal(c.values[0].value,visibleOpacity);assert.equal(c.values[1].value,1);assert.equal(c.calls,1);
+  c.player.listeners.playToEnd();assert.equal(c.player.currentTime,0);assert.equal(c.values[0].value,visibleOpacity);assert.equal(c.calls,1);
   c.app.currentState='background';c.app.listener('background');const paused=c.player.pauses;
   c.app.currentState='active';c.app.listener('active');assert.ok(c.player.pauses>=paused);assert.ok(c.player.plays>playCount);
   c.cleanup();assert.equal(Object.keys(c.player.listeners).length,0);
 });
-test('Skip Intro applies blur immediately; unavailable media still reveals the controls',()=>{
-  const c=cinema();c.render();c.render({forceReveal:true});assert.equal(c.calls,1);assert.equal(c.values[1].value,1);c.cleanup();
+test('blur is present from the first frame and the menu waits for the background fade',()=>{
+  const c=cinema();let tree=c.render();assert.ok(c.find(tree,'Blur'));assert.equal(c.values[0].value,0);
+  c.find(tree,'Video').props.onFirstFrameRender();assert.equal(c.calls,0);assert.equal(c.values[0].value,1);
+  c.player.listeners.timeUpdate({currentTime:15});assert.equal(c.calls,0,'Video position does not rush the menu');
+  c.timers.find(t=>t.ms===2100).fn();assert.equal(c.calls,1);
+  c.find(tree,'Video').props.onFirstFrameRender();assert.equal(c.timers.filter(t=>t.ms===2100).length,1);c.cleanup();
+});
+test('unavailable media still reveals the controls without a skip button',()=>{
   const stalled=cinema();stalled.render();stalled.timers.find(t=>t.ms===8000).fn();assert.equal(stalled.calls,1);stalled.cleanup();
   const failed=cinema();failed.render();failed.player.listeners.statusChange({status:'error'});assert.equal(failed.calls,1);assert.ok(failed.player.pauses);failed.cleanup();
 });
