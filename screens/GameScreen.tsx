@@ -39,6 +39,15 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
   const [aiThinking, setAiThinking] = useState(false);
   const [aiRetry, setAiRetry] = useState(0);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [sidebarClosing, setSidebarClosing] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeSidebar = () => {
+    setShowSidebar(false);
+    setSidebarClosing(true);
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => setSidebarClosing(false), 500);
+  };
+  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [previewPoint, setPreviewPoint] = useState<Point | null>(null);
   const [showResults, setShowResults] = useState(false);
@@ -56,6 +65,7 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
   const [handicapCount, setHandicapCount] = useState(1);
   const [komiDirection, setKomiDirection] = useState<KomiDirection>('standard');
   const [komiValue, setKomiValue] = useState(7.5);
+  const [customKomi, setCustomKomi] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
   const [passNotice, setPassNotice] = useState<string | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -102,7 +112,7 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
       onExit();
     }, 'Exit Game', true);
   };
-  useEffect(()=> { const s=BackHandler.addEventListener('hardwareBackPress',()=> { if(dialog) setDialog(null); else if(showResults) setShowResults(false); else if(showSidebar) setShowSidebar(false); else handleExit(); return true; }); return ()=>s.remove(); },[game,dialog,showSidebar,showResults,snapshots]);
+  useEffect(()=> { const s=BackHandler.addEventListener('hardwareBackPress',()=> { if(dialog) setDialog(null); else if(showResults) setShowResults(false); else if(showSidebar) closeSidebar(); else handleExit(); return true; }); return ()=>s.remove(); },[game,dialog,showSidebar,showResults,snapshots]);
   const moveAllowed = () => gameRef.current.phase === 'play' && (!timeSettings || gameStarted) && (!aiConfig || gameRef.current.turn === aiConfig.userColor);
   const setNode = (node: RecordNode) => { recordRef.current=node; setRecordNode(node); updateGame({...node.position, deadStones:new Set(),sekiPoints:new Set()}); setPreviewPoint(null); setPassNotice(null); setSnapshots([]); };
   const commit = (point: Point | null, isAI=false) => {
@@ -147,7 +157,7 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
     setDialog({title:ko?'Ko — one move elsewhere first':fixed?'Hoshi Violation':'Invalid Move',description:ko?(ruleset==='japanese'?'Ko: you cannot immediately recapture and repeat the previous position. Play elsewhere first — then you may capture back.':'Under Chinese rules no board position may ever repeat (positional superko). Choose a different move — even recapturing later is forbidden if it recreates an earlier position.'):fixed?'In Fixed mode, handicap stones must be placed on hoshi (star points).':message.startsWith('Suicide')?'This move would leave your stone with no breathing space.':message,confirmLabel:'Understood',confirm:()=>{},noCancel:true});
   };
   const onIntersectionPress = (p: Point) => {
-    if(showSidebar || dialog) return;
+    if(showSidebar || sidebarClosing || dialog) return;
     if(phase==='scoring') { if(board[p.y][p.x]) toggleDeadGroup(p); return; }
     if(!moveAllowed()) return;
     try { playMove(game,p,handicapType==='fixed'?getHoshiPoints(boardSize):undefined); } catch(error) { if(!board[p.y][p.x]) showIllegalMove((error as Error).message); setPreviewPoint(null); return; }
@@ -160,7 +170,7 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
     const hCount=Math.max(1,Math.min(opts?.hCount??(reset?1:handicapCount),hType==='fixed'?getHoshiPoints(size).length-1:8));
     const rSet=opts?.rSet??(reset?'chinese':ruleset), km=hOn?.5:rSet==='chinese'?7.5:6.5;
     const next=emptyPosition(size,rSet,hOn?hCount+1:0), root=createRecord(next,km);
-    setHandicapOn(hOn); setHandicapCount(hCount); setKomiDirection(hOn?'none':'standard'); setKomiValue(rSet==='chinese'?7.5:6.5);
+    setHandicapOn(hOn); setHandicapCount(hCount); setKomiDirection(hOn?'none':'standard'); setKomiValue(rSet==='chinese'?7.5:6.5); if(!hOn)setCustomKomi('');
     updateGame(next); setRecordRoot(root); recordRef.current=root; setRecordNode(root); setReviewMode(false); setShowComment(false); setSnapshots([]); snapshotsRef.current=[];
     setPreviewPoint(null); setShowResults(false); setDialog(null); setNotice(null); setPassNotice(null); setFading([]); setAiThinking(false);
     if(reviewMode) {setAiConfig(null);setTimeSettings(null);}
@@ -168,7 +178,7 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
     const nextClocks={black:createClock(ts,(ts?.mainTimeMinutes??30)*60000),white:createClock(ts,(ts?.mainTimeMinutes??30)*60000)};
     clocksRef.current=nextClocks; setClocks(nextClocks); setGameStarted(!ts); lastTick.current=Date.now();
   };
-  const changeRules = (rs: GameState['ruleset']) => { if(rs===ruleset)return; setShowSidebar(false); if(ongoing) ask('Change Ruleset?','Switching rulesets will refresh the board and reset the current game. Your progress will be lost.',()=>startGame(boardSize,{rSet:rs}),'Change Ruleset'); else startGame(boardSize,{rSet:rs}); };
+  const changeRules = (rs: GameState['ruleset']) => { if(rs===ruleset)return; if(phase !== 'ended' && board.some(row=>row.some(Boolean))) ask('Change Ruleset?','Switching rulesets will refresh the board and reset the current game. Your progress will be lost.',()=>startGame(boardSize,{rSet:rs}),'Change Ruleset'); else startGame(boardSize,{rSet:rs}); };
   const changeSize = (size: number) => { if(size===boardSize)return; if(ongoing)ask('Change Board Size?','This will start a new game. Current progress will be lost.',()=>startGame(size),'Start New Game');else startGame(size); };
   const reset = () => { if(ongoing)ask('Refresh Board?','This will clear the board and restart the game. History and SGF settings will be lost.',()=>startGame(boardSize,{reset:true}),'Refresh');else startGame(boardSize,{reset:true}); };
   const undo = () => {
@@ -208,7 +218,6 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
       const text=serializeSgf(recordRoot),name=`goluxe_${boardSize}x${boardSize}_${Date.now()}.sgf`;
       if(Platform.OS==='web') {const url=URL.createObjectURL(new Blob([text],{type:'application/x-go-sgf'}));const a=document.createElement('a');a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);}
       else {const file=new File(Paths.cache,name);file.create({overwrite:true});file.write(text);if(await Sharing.isAvailableAsync())await Sharing.shareAsync(file.uri,{mimeType:'application/x-go-sgf',UTI:'public.plain-text',dialogTitle:'GoLuxe game record'});else await Share.share({message:text,title:'GoLuxe game record'});}
-      setShowSidebar(false);
     } catch(e) {showNotice(`Export failed: ${(e as Error).message}`);}
   };
   const importSgf = async () => {
@@ -241,7 +250,7 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
         <View style={styles.scoreCenter}>{status!==''&&<Text style={styles.statusText}>{status}</Text>}{timeSettings&&phase==='play'&&<Pressable onPress={showClocks}><Text style={styles.clockText}><Text style={turn==='black'?styles.clockActive:styles.clockIdle}>{clockDisplay(clocks.black,timeSettings)}</Text><Text style={styles.clockSep}> | </Text><Text style={turn==='white'?styles.clockActive:styles.clockIdle}>{clockDisplay(clocks.white,timeSettings)}</Text></Text></Pressable>}{passNotice&&<Text style={styles.passNotice}>{passNotice}</Text>}{phase==='scoring'&&<Pressable accessibilityLabel="Scoring Help" onPress={()=>setDialog({title:ruleset==='chinese'?'Chinese Area Scoring':'Japanese Territory Scoring',description:"Toggle any dead stones yourself (your judgment is final), and then select 'Finalize Score' to conclude the game.",confirmLabel:'Start Scoring',confirm:()=>{},noCancel:true})}><Text style={{color:C.amber100}}>?</Text></Pressable>}</View>
         <Pressable onPress={()=>showScore('white')} style={[styles.scoreSideRight,{opacity:turn==='white'&&phase==='play'?1:themeMode==='light'?.78:.3}]}><View style={{alignItems:'flex-end'}}><Text style={styles.scoreLabel}>White</Text><Text style={styles.scoreValue}>{scoreDetail.white.total.toFixed(1)}</Text></View><View style={[styles.miniStone,{backgroundColor:'#fff',borderColor:'rgba(0,0,0,.20)'}]}/></Pressable>
       </View>
-      <View style={styles.boardPad}><Board board={board} lastMove={lastMove} previewPoint={previewPoint} onIntersectionPress={onIntersectionPress} turn={turn} boardPx={boardPx} interactive={phase!=='ended'&&!showSidebar&&!dialog&&(phase==='scoring'||moveAllowed())} showLiberties={showLiberties} showLifeStatus={showLifeStatus} hideAtari={!showAtariWarning} deadStones={deadStones} sekiPoints={game.sekiPoints} isScoringMode={phase==='scoring'} ruleset={ruleset} fading={fading} theme={boardTheme}/></View>
+      <View style={styles.boardPad}><Board board={board} lastMove={lastMove} previewPoint={previewPoint} onIntersectionPress={onIntersectionPress} turn={turn} boardPx={boardPx} interactive={phase!=='ended'&&!showSidebar&&!sidebarClosing&&!dialog&&(phase==='scoring'||moveAllowed())} showLiberties={showLiberties} showLifeStatus={showLifeStatus} hideAtari={!showAtariWarning} deadStones={deadStones} sekiPoints={game.sekiPoints} isScoringMode={phase==='scoring'} ruleset={ruleset} fading={fading} theme={boardTheme}/></View>
       <View style={styles.noticeBox}><Text style={styles.noticeText}>{phase==='ended'?`${resultTitle}${game.winReason==='resign'?' by resignation':game.winReason==='time'?' on time':game.winReason==='points'?` · ${scoreDetail.black.total.toFixed(1)} to ${scoreDetail.white.total.toFixed(1)}`:''}`:notice||' '}</Text></View>
       {reviewMode&&<View style={{width:boardPx,borderWidth:1,borderColor:C.white10,borderRadius:12,padding:8,gap:10,backgroundColor:'rgba(255,255,255,.03)'}}><RecordControls node={recordNode} onNode={setNode} onNav={navigateRecord} commentVisible={showComment} onComment={()=>setShowComment(v=>!v)}/>{showComment&&recordNode.properties.C&&<Text style={{color:'rgba(255,255,255,.70)',fontFamily:SERIF,fontSize:16}}>{recordNode.properties.C.join('\n')}</Text>}</View>}
       {timeSettings&&!gameStarted&&phase==='play'?<Pressable onPress={()=>{lastTick.current=Date.now();setGameStarted(true);}} style={styles.startGameBtn}><Text style={styles.startGameText}>Start Game</Text></Pressable>:phase==='play'?<View style={[styles.actionRow,{maxWidth:boardPx}]}>
@@ -252,11 +261,11 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
       </View>:phase==='scoring'?<View style={{width:boardPx,gap:8}}><View style={styles.actionRow}>{actionBtn('Resume Play',resume)}</View><Pressable onPress={finalize}  style={styles.finalizeBtn}><Text style={styles.finalizeText}>Finalize Score</Text></Pressable></View>:<View style={[styles.actionRow,{maxWidth:boardPx}]}>{actionBtn('Play Again',()=>startGame(boardSize,{reset:true}))}</View>}
     </ScrollView>
     </SafeAreaView>
-    <Sidebar visible={showSidebar} onClose={()=>setShowSidebar(false)} onExitToMenu={handleExit} showLiberties={showLiberties} setShowLiberties={setShowLiberties} showAtariWarning={showAtariWarning} setShowAtariWarning={setShowAtariWarning} showLifeStatus={showLifeStatus} setShowLifeStatus={setShowLifeStatus} ruleset={ruleset} onRuleset={changeRules} handicapOn={handicapOn} onToggleHandicap={()=>{setShowSidebar(false);startGame(boardSize,{hOn:!handicapOn});}} handicapType={handicapType} onHandicapType={t=>{setHandicapType(t);startGame(boardSize,{hType:t});}} handicapCount={handicapCount} onHandicapCount={n=>{setHandicapCount(n);startGame(boardSize,{hCount:n});}} maxHandicap={maxHandicap} komiDirection={komiDirection} setKomiDirection={setKomiDirection} komiValue={komiValue} setKomiValue={setKomiValue} boardTheme={boardTheme} setBoardTheme={setBoardTheme} onExportSgf={exportSgf} onImportSgf={importSgf}/>
+    <Sidebar visible={showSidebar} onClose={closeSidebar} onExitToMenu={handleExit} showLiberties={showLiberties} setShowLiberties={setShowLiberties} showAtariWarning={showAtariWarning} setShowAtariWarning={setShowAtariWarning} showLifeStatus={showLifeStatus} setShowLifeStatus={setShowLifeStatus} ruleset={ruleset} onRuleset={changeRules} handicapOn={handicapOn} onToggleHandicap={()=>{startGame(boardSize,{hOn:!handicapOn});}} handicapType={handicapType} onHandicapType={t=>{setHandicapType(t);startGame(boardSize,{hType:t});}} handicapCount={handicapCount} onHandicapCount={n=>{setHandicapCount(n);startGame(boardSize,{hCount:n});}} maxHandicap={maxHandicap} komiDirection={komiDirection} setKomiDirection={setKomiDirection} customKomi={customKomi} setCustomKomi={setCustomKomi} komiValue={komiValue} setKomiValue={setKomiValue} boardTheme={boardTheme} setBoardTheme={setBoardTheme} onExportSgf={exportSgf} onImportSgf={importSgf}/>
     {/* Root sibling of the sidebar: a child zIndex cannot escape SafeAreaView. */}
     <Pressable disabled={exiting} accessibilityRole="button" accessibilityLabel={showSidebar?'Close settings':'Open settings'}
       accessibilityState={{expanded:showSidebar,disabled:exiting}}
-      onPress={()=>{setPreviewPoint(null);setShowSidebar(v=>!v);}}
+      onPress={()=>{setPreviewPoint(null);if(showSidebar)closeSidebar();else {setSidebarClosing(false);setShowSidebar(true);}}}
       style={[styles.gearBtn,{position:'absolute',top:insets.top+6,left:insets.left+8}]}>
       <GearIcon open={showSidebar} color={showSidebar?'#ffffff':themeMode==='light'?'#1c1917':'#ffffff'}/>
     </Pressable>
