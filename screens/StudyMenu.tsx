@@ -116,12 +116,32 @@ const StudyMenu: React.FC<StudyMenuProps> = ({ onSelect, onBack }) => {
             );
           })}
         </View>
-        <View style={styles.pageDots}>{Array.from({length:totalPages},(_,i)=><Pressable key={i} accessibilityLabel={`Page ${i+1}`} accessibilityState={{selected:page===i}} onPress={()=>setPage(i)} hitSlop={10} style={[styles.pageDot,{backgroundColor:page===i?'#fcd34d':C.white20}]}/>)}</View>
-        <View style={styles.footer}>{page>0&&<Pressable onPress={()=>setPage(page-1)}><Text style={styles.backText}>← Prev</Text></Pressable>}
-        <Pressable onPress={onBack} style={styles.backBtn}>
-          <Text style={styles.backText}>Back</Text>
+        <View style={styles.pagination}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Previous study page"
+            accessibilityState={{disabled: page === 0}} disabled={page === 0}
+            onPress={() => setPage(p => Math.max(0, p - 1))}
+            style={({pressed}) => [styles.pageButton, page === 0 && styles.hiddenButton, pressed && styles.cardPressed]}>
+            <Text style={styles.pageButtonText}>‹ Previous</Text>
+          </Pressable>
+          <View style={styles.pageDots}>
+            {Array.from({length:totalPages}, (_,i) => (
+              <Pressable key={i} accessibilityRole="button" accessibilityLabel={`Study page ${i + 1} of ${totalPages}`}
+                accessibilityState={{selected:page === i}} onPress={() => setPage(i)} style={styles.dotButton}>
+                <View style={[styles.pageDot, {backgroundColor:page === i ? '#fcd34d' : C.white20}]}/>
+              </Pressable>
+            ))}
+          </View>
+          <Pressable accessibilityRole="button" accessibilityLabel="Next study page"
+            accessibilityState={{disabled: page === totalPages - 1}} disabled={page === totalPages - 1}
+            onPress={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+            style={({pressed}) => [styles.pageButton, page === totalPages - 1 && styles.hiddenButton, pressed && styles.cardPressed]}>
+            <Text style={styles.pageButtonText}>Next ›</Text>
+          </Pressable>
+        </View>
+        <Pressable accessibilityRole="button" onPress={onBack}
+          style={({pressed}) => [styles.backBtn, pressed && styles.cardPressed]}>
+          <Text style={styles.backText}>Back to menu</Text>
         </Pressable>
-        {page<totalPages-1&&<Pressable onPress={()=>setPage(page+1)}><Text style={styles.backText}>Next →</Text></Pressable>}</View>
       </ScrollView>
       </SafeAreaView>
     </View>
@@ -130,7 +150,13 @@ const StudyMenu: React.FC<StudyMenuProps> = ({ onSelect, onBack }) => {
 
 const styles = StyleSheet.create({
   resume:{fontSize:9,color:'rgba(252,211,77,.70)',textTransform:'uppercase',letterSpacing:1},
-  pageDots:{flexDirection:'row',gap:12,marginTop:20},pageDot:{width:8,height:8,borderRadius:4},footer:{flexDirection:'row',gap:24,alignItems:'center',marginTop:16},
+  pagination: { width: '100%', maxWidth: 420, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 20 },
+  pageButton: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
+  hiddenButton: { opacity: 0 },
+  pageButtonText: { fontFamily: SERIF, fontSize: 16, color: C.amber50, letterSpacing: 0.5 },
+  pageDots: { flexDirection: 'row', alignItems: 'center' },
+  dotButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  pageDot: { width: 6, height: 6, borderRadius: 3 },
   root: { flex: 1, backgroundColor: '#000' },
   center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   heading: { fontFamily: SERIF, fontSize: 24, color: C.amber50, letterSpacing: -0.5, marginBottom: 20 },
@@ -160,7 +186,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: 'rgba(254,243,199,0.80)',
   },
-  backBtn: { marginTop: 28, padding: 8 },
+  backBtn: { marginTop: 8, minHeight: 44, paddingHorizontal: 20, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
   backText: { fontFamily: SERIF, fontSize: 12, color: C.white30, textTransform: 'uppercase', letterSpacing: 3 },
 });
 
