@@ -4,7 +4,7 @@ import {MENU_VIDEOS} from '../config/homeCinema';
 import { AnimatedView } from '../ui';
 import { useWindowDimensions } from 'react-native';
 import { FadeIn, FadeInDown, Easing, FadeInRight, FadeInLeft, useSharedValue, useAnimatedProps, withDelay, withTiming } from 'react-native-reanimated';
-import { Pressable, StatusBar, Text, View } from '../ui';
+import { Pressable, ScrollView, StatusBar, Text, View } from '../ui';
 import React, { useState, useRef } from 'react';
 import { Dimensions, StyleSheet } from 'react-native';
 
@@ -175,7 +175,9 @@ const WhatIsGoMenu: React.FC<WhatIsGoMenuProps> = ({ onBack, onBegin, onHowToPla
         </Text>
       </View>
 
+      <View style={styles.chapterFrame}>
       <AnimatedView key={chapter} entering={(direction>0?FadeInRight:FadeInLeft).duration(700).withInitialValues({transform:[{translateX:direction*40}]})} style={styles.body} onTouchStart={(e:any)=>{touchX.current=e.nativeEvent.pageX;}} onTouchEnd={(e:any)=>{if(touchX.current===null)return;const dx=e.nativeEvent.pageX-touchX.current;touchX.current=null;if(dx < -60)goTo(chapter+1);else if(dx > 60)goTo(chapter-1);}}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.chapterContent}>
         <DecoVisual chapter={chapter} />
         <AnimatedView entering={FadeInDown.duration(700).delay(150).withInitialValues({transform:[{translateY:8}]})}><Text style={styles.kicker}>{c.kicker}</Text></AnimatedView>
         <AnimatedView entering={FadeInDown.duration(700).delay(300).withInitialValues({transform:[{translateY:16}]})}><Text style={[styles.title,{fontSize:chapter===3?24:30}]}>{c.title}</Text></AnimatedView>
@@ -191,20 +193,24 @@ const WhatIsGoMenu: React.FC<WhatIsGoMenuProps> = ({ onBack, onBegin, onHowToPla
             </Pressable>
           </AnimatedView>
         )}
+        </ScrollView>
       </AnimatedView>
+      <Pressable accessibilityRole="button" accessibilityLabel="Previous chapter" accessibilityState={{disabled:chapter===0}}
+        onPress={() => goTo(chapter - 1)} disabled={chapter === 0} style={[styles.arrow, styles.leftArrow, chapter === 0 && { opacity: 0.2 }]}>
+        <Text style={styles.arrowText}>‹</Text>
+      </Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="Next chapter" accessibilityState={{disabled:chapter===CHAPTERS.length-1}}
+        onPress={() => goTo(chapter + 1)} disabled={chapter === CHAPTERS.length-1} style={[styles.arrow, styles.rightArrow, chapter === CHAPTERS.length-1 && { opacity: 0.2 }]}>
+        <Text style={styles.arrowText}>›</Text>
+      </Pressable>
+      </View>
 
       <View style={styles.bottomBar}>
-        <Pressable onPress={() => goTo(chapter - 1)} disabled={chapter === 0} style={[styles.arrow, chapter === 0 && { opacity: 0.2 }]}>
-          <Text style={styles.arrowText}>‹</Text>
-        </Pressable>
         <View style={styles.dots}>
           {CHAPTERS.map((_, i) => (
             <Pressable key={i} accessibilityLabel={`Chapter ${i+1}`} onPress={() => goTo(i)} style={[styles.dot, i === chapter ? styles.dotActive : styles.dotIdle]} />
           ))}
         </View>
-        <Pressable onPress={() => goTo(chapter + 1)} disabled={chapter === 3} style={[styles.arrow, chapter === 3 && { opacity: 0.2 }]}>
-          <Text style={styles.arrowText}>›</Text>
-        </Pressable>
       </View>
       </SafeAreaView>
     </View>
@@ -217,7 +223,11 @@ const styles = StyleSheet.create({
   topBtn: { padding: 8 },
   topBtnText: { color: C.white40, fontSize: 12, fontFamily: SERIF, letterSpacing: 2.2, textTransform: 'uppercase' },
   counter: { color: 'rgba(254,243,199,0.40)', fontSize: 12, fontFamily: SERIF, letterSpacing: 3.6 },
-  body: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  chapterFrame: { flex: 1, overflow: 'hidden' },
+  body: { flex: 1 },
+  chapterContent: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 56, paddingVertical: 16 },
+  leftArrow: { position: 'absolute', left: 6, top: '50%', marginTop: -22, zIndex: 10 },
+  rightArrow: { position: 'absolute', right: 6, top: '50%', marginTop: -22, zIndex: 10 },
   kicker: { color: 'rgba(254,243,199,0.40)', fontWeight: '300', fontSize: 10, letterSpacing: 4.5, textTransform: 'uppercase', marginTop: 20, marginBottom: 12, textAlign: 'center' },
   title: { fontFamily: SERIF, fontSize: 30, color: C.amber50, letterSpacing: -0.5, textAlign: 'center', marginBottom: 12, maxWidth: 340 },
   rule: { height: 1, width: 64, backgroundColor: 'rgba(254,243,199,0.15)', marginBottom: 12 },
@@ -236,7 +246,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   ctaText: { color: '#000', fontFamily: SERIF, fontSize: 11, letterSpacing: 2.2, textTransform: 'uppercase' },
-  bottomBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 32, paddingBottom: 24 },
+  bottomBar: { alignItems: 'center', paddingTop: 12, paddingBottom: 24 },
   arrow: {
     width: 44, height: 44, borderRadius: 22, borderWidth: 1, borderColor: C.white10,
     alignItems: 'center', justifyContent: 'center',
