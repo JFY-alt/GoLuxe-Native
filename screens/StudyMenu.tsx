@@ -2,8 +2,8 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import MenuBackdrop from '../components/MenuBackdrop';
 import {MENU_VIDEOS} from '../config/homeCinema';
 import { Pressable, ScrollView, StatusBar, Text, View } from '../ui';
-import React, { useCallback, useState } from 'react';
-import { StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, Easing, StyleSheet } from 'react-native';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Circle } from 'react-native-svg';
@@ -80,7 +80,28 @@ interface StudyMenuProps {
 /** Matches the web StudyMenu: 6 cards with progress rings, persisted via AsyncStorage. */
 const StudyMenu: React.FC<StudyMenuProps> = ({ onSelect, onBack }) => {
   const [page,setPage]=useState(0);
+  const [transitioning,setTransitioning]=useState(false);
+  const busy=useRef(false),mounted=useRef(true);
+  const cardsOpacity=useRef(new Animated.Value(1)).current;
+  useEffect(()=>{
+    mounted.current=true;
+    return ()=>{mounted.current=false;cardsOpacity.stopAnimation();};
+  },[cardsOpacity]);
+  // Wait for React to commit the new cards before beginning their entrance.
+  useEffect(()=>{
+    if(!busy.current)return;
+    Animated.timing(cardsOpacity,{toValue:1,duration:550,easing:Easing.out(Easing.cubic),useNativeDriver:true}).start(({finished})=>{
+      if(finished&&mounted.current){busy.current=false;setTransitioning(false);}
+    });
+  },[page,cardsOpacity]);
   const perPage=6,totalPages=Math.ceil(SENSEI_TOPICS.length/perPage);
+  const goToPage=(next:number)=>{
+    if(next===page||next<0||next>=totalPages||busy.current)return;
+    busy.current=true;setTransitioning(true);
+    Animated.timing(cardsOpacity,{toValue:0,duration:350,easing:Easing.inOut(Easing.ease),useNativeDriver:true}).start(({finished})=>{
+      if(finished&&mounted.current)setPage(next);
+    });
+  };
   const [progress, setProgress] = useState<Record<string, number>>({});
 
   const load = useCallback(() => {
@@ -98,15 +119,15 @@ const StudyMenu: React.FC<StudyMenuProps> = ({ onSelect, onBack }) => {
       <StatusBar barStyle="light-content" />
       <MenuBackdrop source={MENU_VIDEOS.study}/>
       <SafeAreaView style={{flex:1}} edges={['top','right','bottom','left']}>
-      <ScrollView contentContainerStyle={styles.center} showsVerticalScrollIndicator={false}>
-        <Text style={styles.heading}>Study Room</Text>
-        <View style={styles.cards}>
+      <Text style={styles.heading}>Study Room</Text>
+      <ScrollView style={{flex:1}} contentContainerStyle={styles.center} showsVerticalScrollIndicator={false}>
+        <Animated.View pointerEvents={transitioning?'none':'auto'} style={[styles.cards,{opacity:cardsOpacity}]}>
           {SENSEI_TOPICS.slice(page*perPage,(page+1)*perPage).map((topic) => {
             const total = SENSEI_BEAT_COUNTS[topic.id] || 1;
             const reached = progress[topic.id];
             const percent = reached === undefined ? 0 : Math.min(100, ((reached + 1) / total) * 100);
             return (
-              <Pressable key={topic.id} onPress={() => onSelect(topic.id)} style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}>
+              <Pressable key={topic.id} disabled={transitioning} onPress={() => onSelect(topic.id)} style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}>
                 <View style={styles.cardText}>
                   <Text style={styles.cardTitle}>{topic.title}{reached!==undefined&&reached<total-1&&<Text style={styles.resume}>  Resume</Text>}</Text>
                   <Text style={styles.cardSub}>{topic.desc}</Text>
@@ -115,34 +136,26 @@ const StudyMenu: React.FC<StudyMenuProps> = ({ onSelect, onBack }) => {
               </Pressable>
             );
           })}
-        </View>
-        <View style={styles.pagination}>
+        </Animated.View>
+      </ScrollView>
+        <Animated.View pointerEvents={transitioning?'none':'auto'} style={[styles.pagination,{opacity:cardsOpacity}]}>
           <Pressable accessibilityRole="button" accessibilityLabel="Previous study page"
-            accessibilityState={{disabled: page === 0}} disabled={page === 0}
-            onPress={() => setPage(p => Math.max(0, p - 1))}
+            accessibilityState={{disabled: page === 0 || transitioning}} disabled={page === 0 || transitioning}
+            onPress={() => goToPage(page - 1)}
             style={({pressed}) => [styles.pageButton, page === 0 && styles.hiddenButton, pressed && styles.cardPressed]}>
             <Text style={styles.pageButtonText}>‹ Previous</Text>
           </Pressable>
-          <View style={styles.pageDots}>
-            {Array.from({length:totalPages}, (_,i) => (
-              <Pressable key={i} accessibilityRole="button" accessibilityLabel={`Study page ${i + 1} of ${totalPages}`}
-                accessibilityState={{selected:page === i}} onPress={() => setPage(i)} style={styles.dotButton}>
-                <View style={[styles.pageDot, {backgroundColor:page === i ? '#fcd34d' : C.white20}]}/>
-              </Pressable>
-            ))}
-          </View>
           <Pressable accessibilityRole="button" accessibilityLabel="Next study page"
-            accessibilityState={{disabled: page === totalPages - 1}} disabled={page === totalPages - 1}
-            onPress={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+            accessibilityState={{disabled: page === totalPages - 1 || transitioning}} disabled={page === totalPages - 1 || transitioning}
+            onPress={() => goToPage(page + 1)}
             style={({pressed}) => [styles.pageButton, page === totalPages - 1 && styles.hiddenButton, pressed && styles.cardPressed]}>
             <Text style={styles.pageButtonText}>Next ›</Text>
           </Pressable>
-        </View>
+        </Animated.View>
         <Pressable accessibilityRole="button" onPress={onBack}
           style={({pressed}) => [styles.backBtn, pressed && styles.cardPressed]}>
           <Text style={styles.backText}>Back to menu</Text>
         </Pressable>
-      </ScrollView>
       </SafeAreaView>
     </View>
   );
@@ -150,16 +163,13 @@ const StudyMenu: React.FC<StudyMenuProps> = ({ onSelect, onBack }) => {
 
 const styles = StyleSheet.create({
   resume:{fontSize:9,color:'rgba(252,211,77,.70)',textTransform:'uppercase',letterSpacing:1},
-  pagination: { width: '100%', maxWidth: 420, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 20 },
+  pagination: { width: '100%', maxWidth: 420, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', alignSelf: 'center', paddingHorizontal: 24, marginTop: 12 },
   pageButton: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
   hiddenButton: { opacity: 0 },
   pageButtonText: { fontFamily: SERIF, fontSize: 16, color: C.amber50, letterSpacing: 0.5 },
-  pageDots: { flexDirection: 'row', alignItems: 'center' },
-  dotButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  pageDot: { width: 6, height: 6, borderRadius: 3 },
   root: { flex: 1, backgroundColor: '#000' },
-  center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  heading: { fontFamily: SERIF, fontSize: 24, color: C.amber50, letterSpacing: -0.5, marginBottom: 20 },
+  center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 12 },
+  heading: { fontFamily: SERIF, fontSize: 24, color: C.amber50, letterSpacing: -0.5, paddingTop: 24, paddingHorizontal: 24, marginBottom: 20, textAlign: 'center' },
   cards: { width: '100%', maxWidth: 420, gap: 12 },
   card: {
     flexDirection: 'row',
@@ -186,7 +196,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: 'rgba(254,243,199,0.80)',
   },
-  backBtn: { marginTop: 8, minHeight: 44, paddingHorizontal: 20, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
+  backBtn: { alignSelf: 'center', marginBottom: 16, marginTop: 8, minHeight: 44, paddingHorizontal: 20, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
   backText: { fontFamily: SERIF, fontSize: 12, color: C.white30, textTransform: 'uppercase', letterSpacing: 3 },
 });
 
