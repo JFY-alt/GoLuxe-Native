@@ -1,3 +1,5 @@
+import GlassBackdrop from '../components/GlassBackdrop';
+import DojoBackdrop from '../components/DojoBackdrop';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import GuideActions from '../components/GuideActions';
 import GuideHeader from '../components/GuideHeader';
@@ -5,7 +7,7 @@ import { useWindowDimensions } from 'react-native';
 import { useTheme } from '../ui';
 import { Pressable, ScrollView, StatusBar, Text, View, LinearGradient, AnimatedView } from '../ui';
 import React, { useEffect, useRef, useState } from 'react';
-import { Dimensions, Modal, StyleSheet } from 'react-native';
+import { BackHandler, Dimensions, Modal, StyleSheet } from 'react-native';
 
 import Animated, { SlideInRight, ZoomIn } from 'react-native-reanimated';
 import Board from '../components/Board';
@@ -152,6 +154,7 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
   const [tutNudge, setTutNudge] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  useEffect(()=>{const subscription=BackHandler.addEventListener('hardwareBackPress',()=>{setShowExitConfirm(true);return true;});return()=>subscription.remove();},[]);
   const nudgeTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -170,7 +173,7 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
   const setupTutStep = (step: number) => {
     setTutTarget(null); setTutTerritory(null); setTutNudge(null); setTutReveal(0);
     if (step === 0) { tutSetBoard([]); setTutPhase('intro'); }
-    else if (step === 1) { tutSetBoard([]); setTutPlaced(null); setTutPhase('await-stone'); setTutTarget({ x: 4, y: 4 }); }
+    else if (step === 1) { tutSetBoard([]); setTutPlaced(null); setTutPhase('await-stone'); setTutTarget({ x: 2, y: 2 }); }
     else if (step === 2) {
       tutSetBoard(tutPlaced ? [{ p: tutPlaced, c: 'black' }] : []);
       setTutPhase('liberties');
@@ -310,7 +313,7 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
       };
       return {
         title: 'Your first stone', mood: 'happy',
-        text: `Tap any empty intersection to place your first stone. (The middle is the honest move — I marked it for you.)`,
+        text: `Tap any empty intersection to place your first stone. (The 3-3 point is the strong move — I marked it for you.)`,
       };
     }
     if (tutStep === 2) {
@@ -406,10 +409,10 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
       const done = tutReveal >= total && total > 0;
       if (tutPhase === 'counting-3') return {
         title: 'Komi', mood: 'happy',
-        text: `Black moves first — that's a real edge. So White gets **komi**: bonus points (usually 7.5) to even things out. Watch what it does to our example: Black leads in territory, 9 to 4 — but 4 + 7.5 is 11.5, so ~~White wins~~. Add it all up — territory, captures, komi — and you have the final score.`,
+        text: `Black moves first — that's a real edge. So White gets **komi**: bonus points (usually 6.5 under Japanese rules) to even things out. Watch what it does to our example: Black leads in territory, 9 to 4 — but 4 + 6.5 is 10.5, so ~~White wins~~. Add it all up — territory, captures, komi — and you have the final score.`,
         chips: [
           { label: 'Black', value: b, tone: 'amber' },
-          { label: 'White', value: `${w} + 7.5`, tone: 'sky' },
+          { label: 'White', value: `${w} + 6.5`, tone: 'sky' },
         ],
         buttonLabel: 'Two ways to count', onButton: () => setTutPhase('counting-4'),
       };
@@ -494,13 +497,7 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" />
-      <LinearGradient
-        colors={['rgba(254,243,199,0.05)', 'rgba(254,243,199,0)']}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 0.35 }}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
+      <DojoBackdrop/>
       <SafeAreaView style={{flex:1}} edges={['top','right','bottom','left']}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <GuideHeader/>
@@ -531,7 +528,7 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
         {/* Ishi lesson card — below the board, never covering it */}
         {card && (
           <View style={[styles.cardWrap,{width:BOARD_PX}]}>
-            <View style={styles.card}>
+            <View style={styles.card}><GlassBackdrop/>
               <View style={styles.cardHeader}>
                 <Ishi mood={card.mood} size={28} />
                 <View style={styles.cardHeadText}>
@@ -582,7 +579,7 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
       {/* Graduation modal — web: animate-in zoom-in duration-300 */}
       <Modal visible={tutStep === 11} transparent animationType="fade">
         <View style={styles.modalBg}>
-          <AnimatedView entering={ZoomIn.duration(300)} style={styles.modalCard}>
+          <AnimatedView entering={ZoomIn.duration(300)} style={styles.modalCard}><GlassBackdrop/>
             <View style={{ alignItems: 'center', marginBottom: 12 }}>
               <Ishi mood="proud" size={76} />
             </View>
@@ -614,15 +611,15 @@ const TutorialScreen: React.FC<TutorialScreenProps> = ({ onExit, onFirstGame, on
       {/* Exit confirm */}
       <Modal visible={showExitConfirm} transparent animationType="fade">
         <View style={styles.modalBg}>
-          <View style={styles.confirmCard}>
-            <Text style={styles.modalTitle}>Exit to Main Menu?</Text>
-            <Text style={[styles.modalPara, { marginBottom: 24 }]}>Your current game progress will be lost.</Text>
+          <View style={styles.confirmCard}><GlassBackdrop/>
+            <Text style={styles.modalTitle}>Exit Tutorial?</Text>
+            <Text style={[styles.modalPara, { marginBottom: 24 }]}>Your tutorial progress will be lost.</Text>
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <Pressable onPress={() => setShowExitConfirm(false)} style={[styles.confirmBtn, styles.confirmCancel]}>
                 <Text style={styles.confirmCancelText}>Cancel</Text>
               </Pressable>
               <Pressable onPress={() => { setShowExitConfirm(false); onExit(); }} style={[styles.confirmBtn, styles.confirmDanger]}>
-                <Text style={styles.confirmDangerText}>Exit</Text>
+                <Text style={styles.confirmDangerText}>Exit Tutorial</Text>
               </Pressable>
             </View>
           </View>
@@ -650,8 +647,8 @@ const styles = StyleSheet.create({
 
   cardWrap: { width: '100%', maxWidth: 420, marginTop: 8 },
   card: {
-    borderRadius: 16, borderWidth: 1, borderColor: 'rgba(253,230,138,0.20)',
-    backgroundColor: 'rgba(20,20,20,0.95)', paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 16, borderWidth: 1, borderColor: 'rgba(254,243,199,.15)',
+    backgroundColor: 'rgba(255,255,255,.03)', paddingHorizontal: 10, paddingVertical: 6,
     shadowColor: '#000', shadowOpacity: 0.7, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 8,
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -684,14 +681,14 @@ const styles = StyleSheet.create({
   backCardText: { color: 'rgba(255,255,255,0.60)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700' },
   nextBtn: {
     flex: 1, paddingHorizontal: 16, paddingVertical: 6, borderRadius: 12,
-    backgroundColor: 'rgba(253,230,138,0.15)', borderWidth: 1, borderColor: 'rgba(253,230,138,0.30)',
+    backgroundColor: C.white05, borderWidth: 1, borderColor: C.white10,
     alignItems: 'center',
   },
-  nextText: { color: C.amber100, fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700' },
+  nextText: { color: 'rgba(255,255,255,.60)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700' },
 
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.70)', alignItems: 'center', justifyContent: 'center', padding: 24 },
   modalCard: {
-    backgroundColor: '#151515', borderWidth: 1, borderColor: 'rgba(253,230,138,0.20)',
+    backgroundColor: 'transparent', borderWidth: 1, borderColor: 'rgba(254,243,199,.15)',
     borderRadius: 24, padding: 24, width: '100%', maxWidth: 360,
     shadowColor: '#000', shadowOpacity: 0.8, shadowRadius: 24, elevation: 16,
   },
@@ -705,7 +702,7 @@ const styles = StyleSheet.create({
   modalCtaText: { color: '#000', fontFamily: SERIF, fontWeight: '700', fontSize: 14, letterSpacing: 0.5 },
   modalBackText: { color: C.white40, fontSize: 12, textTransform: 'uppercase', letterSpacing: 2, textAlign: 'center' },
   confirmCard: {
-    backgroundColor: '#151515', borderWidth: 1, borderColor: C.white10,
+    backgroundColor: 'transparent', borderWidth: 1, borderColor: C.white10,
     borderRadius: 16, padding: 24, width: '100%', maxWidth: 320,
   },
   confirmBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', borderWidth: 1 },

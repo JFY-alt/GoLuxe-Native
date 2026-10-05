@@ -48,6 +48,6 @@ test('all six clock systems handle expiry and overtime overshoot',()=>{
  const ing={system:'ing' as const,mainTimeMinutes:1,ingPeriods:2,ingBlockSeconds:10};assert.equal(tickClock(createClock(ing,1000),ing,12000).clock.ingPeriodsLeft,0);assert.equal(tickClock(createClock(ing,1000),ing,22000).timedOut,true);
  const nhk={system:'nhk' as const,mainTimeMinutes:0,nhkPeriods:1,nhkSeconds:30};assert.equal(tickClock(createClock(nhk,0),nhk,31000).clock.nhkTimeLeft,59000);assert.equal(tickClock(createClock(nhk,0),nhk,91000).timedOut,true);
 });
-test('study content includes every web lesson and valid 9×9 diagrams',()=>{
- assert.equal(SENSEI_LESSONS.length,6);for(const l of SENSEI_LESSONS){assert.ok(l.beats.length);for(const b of l.beats)if(b.board){assert.equal(b.board.length,9);assert.ok(b.board.every(r=>r.length===9));}}
+test('study content includes every web lesson and valid diagrams at their specified board size',()=>{
+ assert.equal(SENSEI_LESSONS.length,12);for(const l of SENSEI_LESSONS){assert.ok(l.beats.length);for(const b of l.beats)if(b.board){assert.ok(b.board.length<=(l.boardSize||9));assert.ok(b.board.every(r=>r.length<=(l.boardSize||9)));}}
 });

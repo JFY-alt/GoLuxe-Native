@@ -11,3 +11,5 @@ Videos stream from goluxe.vercel.app with native caching enabled. This avoids ad
 Checks: TypeScript, 14 existing logic tests, native cinema controller lifecycle checks (cue/return/resume/duration clamp/background/error/stall/cleanup), production exports for iOS/Android/web, and an exported-bundle navigation/game interaction smoke check. The simulated DOM needs a browser-compatibility correction for isEqualNode(null); native media playback itself was mocked in the controller check. Native player and blur rendering are not certified by a DOM/controller test.
 
 Start outputs/GoLuxe-Start.command, keep its terminal open, and scan its QR in Expo Go on the same Wi-Fi as the Mac. The QR is generated after the server is ready. Stop the previous Expo process first if port 8081 is already occupied. Watch mode remains disabled in this environment; restart the launcher after code edits.
+
+The subsequent October 5 sync is documented in [WEB-SYNC-OCT5.md](WEB-SYNC-OCT5.md), including the expanded lessons, updated game appearance, protected native behavior, and current verification.

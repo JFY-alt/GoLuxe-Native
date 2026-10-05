@@ -1,3 +1,5 @@
+import GlassBackdrop from './GlassBackdrop';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import { ThemeToggle, useTheme, TextInput } from '../ui';
 import { Pressable, ScrollView, Text, View, LinearGradient, AnimatedView } from '../ui';
 import React, { useState } from 'react';
@@ -78,7 +80,7 @@ const HelpModal: React.FC<{ title: string; onClose: () => void; children: React.
 }) => (
   <Modal visible transparent animationType="fade" onRequestClose={onClose}>
     <View style={styles.helpBg}>
-      <AnimatedView entering={FadeIn.duration(500)} style={styles.helpCard}>
+      <AnimatedView entering={FadeIn.duration(500)} style={styles.helpCard}><GlassBackdrop/>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{paddingHorizontal:24,paddingTop:80,paddingBottom:128,alignItems:'center'}}>
           <Text style={styles.helpTitle}>{title}</Text>
           <View style={{width:'100%',maxWidth:672}}>{children}</View>
@@ -99,6 +101,7 @@ const B: React.FC<{ children: string }> = ({ children }) => <Text style={styles.
 const Sidebar: React.FC<SidebarProps> = (p) => {
   const { mode: themeMode } = useTheme();
   const visibleThemes = themeMode === 'light' ? ['washi','maple','riverstone'] : ['espresso','classic','midnight'];
+  const insets = useSafeAreaInsets();
   const [customKomi, setCustomKomi] = useState('');
   const [help, setHelp] = useState<null | 'fundamentals' | 'concepts' | 'practice' | 'handicap' | 'sgf'>(null);
   const [confirmHandicap, setConfirmHandicap] = useState(false);
@@ -121,27 +124,14 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
+      <View style={{flex:1, marginTop:insets.top+60, marginBottom:insets.bottom, overflow:'hidden'}}>
       <ScrollView
+        style={{flex:1}}
+        bounces
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.nav}>
-          {/* Learn */}
-          <View style={styles.section}>
-            <SectionTitle>Learn</SectionTitle>
-            <View style={{ gap: 12 }}>
-              {[
-                { label: 'Go Fundamentals', k: 'fundamentals' as const },
-                { label: 'Important Concepts', k: 'concepts' as const },
-              ].map((b) => (
-                <Pressable key={b.k} onPress={() => setHelp(b.k)} style={styles.learnBtn}>
-                  <Text style={styles.learnText}>{b.label}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          <View style={styles.section}><View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center'}}><SectionTitle>Display Mode</SectionTitle><ThemeToggle/></View><Text style={{fontFamily:SERIF,fontSize:9,color:C.white30,lineHeight:14,paddingHorizontal:4}}>{themeMode==='light'?'Washi Paper & Ink':'Noir Ink & Amber'}</Text></View>
           {/* Practice Aids */}
           <View style={styles.section}>
             <SectionTitle onHelp={() => setHelp('practice')}>Practice Aids</SectionTitle>
@@ -288,6 +278,7 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
           </View>
         </View>
       </ScrollView>
+      </View>
 
       {/* handicap confirm */}
       <Modal visible={confirmHandicap} transparent animationType="fade" onRequestClose={() => setConfirmHandicap(false)}>
@@ -397,9 +388,9 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     zIndex: 300,
-    backgroundColor: '#0d0d0d',
+    backgroundColor: 'rgba(0,0,0,.75)',
   },
-  scroll: { paddingTop: 80, paddingBottom: 48, alignItems: 'center' },
+  scroll: { paddingTop: 20, paddingBottom: 48, alignItems: 'center' },
   nav: { width: '100%', maxWidth: 420, paddingHorizontal: 24, gap: 40 },
   section: {},
   secHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
@@ -553,7 +544,7 @@ const styles = StyleSheet.create({
   },
   exitText: { fontFamily: SERIF, fontSize: 12, color: C.white40, textTransform: 'uppercase', letterSpacing: 3 },
   confirmBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.70)', alignItems: 'center', justifyContent: 'center', padding: 32 },
-  confirmCard: { backgroundColor: '#151515', borderWidth: 1, borderColor: C.white10, borderRadius: 16, padding: 24, width: '100%' },
+  confirmCard: { backgroundColor: 'rgba(255,255,255,.03)', borderWidth: 1, borderColor: C.white10, borderRadius: 16, padding: 24, width: '100%' },
   confirmTitle: { fontFamily: SERIF, fontSize: 18, color: C.amber50, textAlign: 'center', marginBottom: 8 },
   confirmDesc: { fontSize: 13, color: C.white40, textAlign: 'center', lineHeight: 19, marginBottom: 20 },
   confirmRow: { flexDirection: 'row', gap: 10 },
@@ -561,8 +552,8 @@ const styles = StyleSheet.create({
   confirmGhostText: { color: C.white30, fontSize: 10, textTransform: 'uppercase', letterSpacing: 2 },
   confirmGold: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: 'rgba(254,243,199,0.10)', borderWidth: 1, borderColor: 'rgba(253,230,138,0.20)', alignItems: 'center' },
   confirmGoldText: { color: C.amber100, fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700', textAlign: 'center' },
-  helpBg: {flex:1,backgroundColor:C.bg},
-  helpCard: {flex:1,backgroundColor:C.bg,width:'100%'},
+  helpBg: {flex:1,backgroundColor:'rgba(0,0,0,.85)'},
+  helpCard: {flex:1,backgroundColor:'transparent',width:'100%'},
   helpTitle: { fontFamily: SERIF, fontSize: 48, color: C.amber50, textAlign: 'center', marginBottom: 64, letterSpacing: -2.4 },
   helpAction: {marginTop:80,paddingVertical:12,alignItems:'center'},
   helpActionText: {fontFamily:SERIF,color:C.white30,fontSize:12,textTransform:'uppercase',letterSpacing:1.2},

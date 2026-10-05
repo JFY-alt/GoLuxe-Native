@@ -7,9 +7,9 @@ import {HOME_CINEMA as timing} from '../config/homeCinema';
 
 let homePlaybackTime:number=timing.repeatFromSeconds;
 
-type Props={source:VideoSource;skipOpening:boolean;active:boolean;onMenuReady:()=>void};
+type Props={source:VideoSource;skipOpening:boolean;active:boolean;forceReveal?:boolean;onMenuReady:()=>void};
 /** One silent player; playback time, rather than a wall-clock timer, cues the menu. */
-export default function HomeCinema({source,skipOpening,active,onMenuReady}:Props){
+export default function HomeCinema({source,skipOpening,active,forceReveal=false,onMenuReady}:Props){
  const activeRef=useRef(active);activeRef.current=active;
  const resumeTime=useRef(skipOpening?Math.max(timing.repeatFromSeconds,homePlaybackTime):0);
  const target=useRef<View|null>(null),ready=useRef(false),revealed=useRef(false),failed=useRef(false);
@@ -34,6 +34,7 @@ export default function HomeCinema({source,skipOpening,active,onMenuReady}:Props
   if(activeRef.current&&AppState.currentState==='active'&&!failed.current)player.play();else player.pause();
   return()=>{clearTimeout(watchdog);clearTimeout(stalledIntro);time.remove();status.remove();end.remove();app.remove();};
  },[player,skipOpening,reveal,fallback,videoOpacity]);
+ useEffect(()=>{if(forceReveal)reveal();},[forceReveal,reveal]);
  useEffect(()=>{if(active&&AppState.currentState==='active'&&!failed.current)player.play();else player.pause();},[player,active]);
  return <View pointerEvents="none" style={StyleSheet.absoluteFill} accessible={false}><Animated.View style={[StyleSheet.absoluteFill,videoStyle]}><BlurTargetView ref={target} style={StyleSheet.absoluteFill}><VideoView player={player} style={StyleSheet.absoluteFill} contentFit="cover" nativeControls={false} allowsPictureInPicture={false} fullscreenOptions={{enable:false}} playsInline surfaceType="textureView" onFirstFrameRender={firstFrame}/></BlurTargetView></Animated.View>{hasFrame&&<Animated.View style={[StyleSheet.absoluteFill,blurStyle]}><BlurView blurTarget={target} blurMethod="dimezisBlurViewSdk31Plus" intensity={48} tint="dark" style={StyleSheet.absoluteFill}/></Animated.View>}</View>;
 }
