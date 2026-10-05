@@ -7,13 +7,14 @@ test('13×13 uses the web visual star layout while preserving fixed-handicap pos
 });
 test('atari connectors lead only to groups whose final liberty is the marked point',()=>{
  const b=createEmptyBoard(9);b[4][4]='white';b[3][4]='black';b[5][4]='black';b[4][3]='black';
- assert.deepEqual(atariConnections(b,{x:5,y:4}),[{x:-1,y:0}]);assert.equal(boardPresentation(b,false,new Set(),null).atari.has('5,4'),true);
+ assert.deepEqual(atariConnections(b,{x:5,y:4}),[{x:-1,y:0}]);assert.equal(boardPresentation(b,false,new Set()).atari.has('5,4'),true);
 });
 test('seki eye markers highlight their whole adjacent group during scoring',()=>{
- const b=createEmptyBoard(9);b[4][4]='black';b[4][5]='black';const p=boardPresentation(b,true,new Set(['4,3']),null);
- assert.deepEqual([...p.sekiStones].sort(),['4,4','5,4']);assert.equal(boardPresentation(b,false,new Set(['4,3']),null).sekiStones.size,0);
+ const b=createEmptyBoard(9);b[4][4]='black';b[4][5]='black';const p=boardPresentation(b,true,new Set(['4,3']));
+ assert.deepEqual([...p.sekiStones].sort(),['4,4','5,4']);assert.equal(boardPresentation(b,false,new Set(['4,3'])).sekiStones.size,0);
 });
-test('virtual scoring stones affect atari preview without mutating the board or practice liberties',()=>{
- const b=createEmptyBoard(9);b[4][4]='white';b[3][4]='black';b[5][4]='black';const p=boardPresentation(b,true,new Set(),{x:3,y:4,color:'black'});
- assert.equal(p.atari.has('5,4'),true);assert.equal(b[4][3],null);assert.equal(p.wLibs.has('3,4'),true);
+test('scoring presentation uses the real board without introducing diagnostic stones',()=>{
+ const b=createEmptyBoard(9);b[4][4]='white';b[3][4]='black';b[5][4]='black';const before=JSON.stringify(b);
+ const p=boardPresentation(b,true,new Set());
+ assert.equal(p.atari.size,0);assert.equal(JSON.stringify(b),before);assert.equal(p.wLibs.has('3,4'),true);
 });

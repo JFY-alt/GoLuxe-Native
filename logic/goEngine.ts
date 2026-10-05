@@ -1,11 +1,22 @@
 
 import { Intersection, Player, Point, RuleSet, DetailedScores } from '../types';
 
-export const createEmptyBoard = (size: number): Intersection[][] => 
+export const createEmptyBoard = (size: number): Intersection[][] =>
   Array.from({ length: size }, () => Array(size).fill(null));
 
-export const getBoardString = (board: Intersection[][]): string => 
+export const getBoardString = (board: Intersection[][]): string =>
   board.map(row => row.map(cell => cell || '.').join('')).join('');
+
+// Shared ko-violation check. Returns true if playing to newBoardStr would violate ko.
+// Japanese: simple ko — only the immediately previous position may not be recreated.
+// Chinese: positional superko — no earlier position may repeat.
+export const isKoViolation = (newBoardStr: string, history: string[], ruleset: 'japanese' | 'chinese'): boolean => {
+  if (ruleset === 'japanese') {
+    return history.length >= 2 && newBoardStr === history[history.length - 2];
+  } else {
+    return history.includes(newBoardStr);
+  }
+};
 
 export const getNeighborsFixed = (p: Point, size: number): Point[] => {
   const neighbors: Point[] = [];
@@ -19,7 +30,7 @@ export const getNeighborsFixed = (p: Point, size: number): Point[] => {
 export const findGroup = (board: Intersection[][], p: Point): { group: Point[], color: Player } | null => {
   const size = board.length;
   if (p.y < 0 || p.y >= size || p.x < 0 || p.x >= size) return null;
-  
+
   const color = board[p.y][p.x];
   if (!color) return null;
 
@@ -31,7 +42,7 @@ export const findGroup = (board: Intersection[][], p: Point): { group: Point[], 
     const current = stack.pop()!;
     const key = `${current.x},${current.y}`;
     if (visited.has(key)) continue;
-    
+
     if (board[current.y][current.x] === color) {
       visited.add(key);
       group.push(current);
@@ -89,7 +100,7 @@ export const getAtariPoints = (board: Intersection[][]): Set<string> => {
 };
 
 /**
- * Checks for a "True Eye". 
+ * Checks for a "True Eye".
  * A space is a true eye if opponent cannot capture it or reduce it.
  * Account for enclosed territories (controlledPointsSet) in diagonal checks.
  */
@@ -134,9 +145,21 @@ export const isTrueEye = (board: Intersection[][], p: Point, color: Player, cont
 };
 
 /**
- * Finds all groups and eye points part of an immortal enclosure.
- * A structural enclosure connects stones via shared territories, correctly
- * recognizing life in non-strictly-adjacent groups.
+ * Benson's algorithm for unconditional life (Benson 1976).
+ *
+ * A set of chains X is unconditionally alive iff each chain in X has at least
+ * two distinct "small" enclosed regions "vital" to it, where:
+ * - A region is a maximal 4-connected area of non-`color` points (empty + opponent stones).
+ * - A region is "small" if every empty point in it is a liberty of at least one
+ *   surrounding `color` chain. (This naturally excludes open areas and large spaces.)
+ * - A region is "vital" to chain C if every empty point in it is a liberty of C.
+ *
+ * The algorithm iteratively removes chains with <2 vital regions and regions
+ * touching removed chains, until fixpoint. Remaining chains are unconditionally
+ * alive. This replaces the earlier shape heuristics (2x2 rejection, edge bans,
+ * size caps, isTrueEye diagonals) with a single principled definition.
+ *
+ * Note: Benson's definition assumes the ruleset prohibits suicide.
  */
 const getImmortalComponents = (board: Intersection[][]): { points: Set<string>, eyes: Set<string> } => {
   const immortalPoints = new Set<string>();
@@ -144,140 +167,136 @@ const getImmortalComponents = (board: Intersection[][]): { points: Set<string>, 
   const size = board.length;
 
   (['black', 'white'] as Player[]).forEach(color => {
-    const stones: Point[] = [];
-    const stoneToIdx = new Map<string, number>();
+    // 1. Find all chains (4-connected stones) of `color`, with liberties.
+    const chains: { stones: Point[], liberties: Set<string> }[] = [];
+    const chainId = new Map<string, number>();
+    const visited = new Set<string>();
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
-        if (board[y][x] === color) {
-          stoneToIdx.set(`${x},${y}`, stones.length);
-          stones.push({ x, y });
-        }
-      }
-    }
-    if (stones.length === 0) return;
-
-    // 1. Partition empty intersections into contiguous regions
-    const globalVisited = new Set<string>();
-    const regions: { points: Point[], neighbors: Set<string>, id: string }[] = [];
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const key = `${x},${y}`;
-        if (board[y][x] === null && !globalVisited.has(key)) {
-          const regionPoints: Point[] = [];
-          const neighbors = new Set<string>();
+        if (board[y][x] === color && !visited.has(`${x},${y}`)) {
+          const stones: Point[] = [];
           const stack: Point[] = [{ x, y }];
-          const regionVisited = new Set<string>();
           while (stack.length > 0) {
             const curr = stack.pop()!;
             const k = `${curr.x},${curr.y}`;
-            if (regionVisited.has(k)) continue;
-            regionVisited.add(k);
-            globalVisited.add(k);
-            regionPoints.push(curr);
+            if (visited.has(k)) continue;
+            visited.add(k);
+            chainId.set(k, chains.length);
+            stones.push(curr);
             getNeighborsFixed(curr, size).forEach(n => {
-              if (board[n.y][n.x] === null) stack.push(n);
-              else neighbors.add(`${n.x},${n.y}`);
+              if (board[n.y][n.x] === color && !visited.has(`${n.x},${n.y}`)) {
+                stack.push(n);
+              }
             });
           }
-          regions.push({ points: regionPoints, neighbors, id: `reg-${x}-${y}` });
-        }
-      }
-    }
-
-    // 2. Filter for regions completely surrounded by 'color'
-    const controlledRegions = regions.filter(r => {
-      if (r.neighbors.size === 0) return false;
-      for (const nKey of r.neighbors) {
-        const [nx, ny] = nKey.split(',').map(Number);
-        if (board[ny][nx] !== color) return false;
-      }
-      return true;
-    });
-
-    const controlledPointsSet = new Set<string>();
-    controlledRegions.forEach(r => r.points.forEach(p => controlledPointsSet.add(`${p.x},${p.y}`)));
-
-    // 3. Define valid eye units (True eyes or enclosed territories)
-    const eyeUnits = controlledRegions.filter(r => {
-      if (r.points.length === 1) return isTrueEye(board, r.points[0], color, controlledPointsSet);
-      return true; 
-    });
-
-    if (eyeUnits.length < 2) return;
-
-    // 4. Build Structural Connectivity Graph
-    const adj = Array.from({ length: stones.length }, () => new Set<number>());
-    
-    // a) Orthogonal adjacency
-    stones.forEach((s, i) => {
-      getNeighborsFixed(s, size).forEach(n => {
-        const ni = stoneToIdx.get(`${n.x},${n.y}`);
-        if (ni !== undefined) {
-          adj[i].add(ni);
-          adj[ni].add(i);
-        }
-      });
-    });
-
-    // b) Territorial adjacency (links diagonal or loose stones enclosing same space)
-    controlledRegions.forEach(r => {
-      const borderingIndices: number[] = [];
-      r.neighbors.forEach(nKey => {
-        const idx = stoneToIdx.get(nKey);
-        if (idx !== undefined) borderingIndices.push(idx);
-      });
-      if (borderingIndices.length > 1) {
-        const first = borderingIndices[0];
-        for (let j = 1; j < borderingIndices.length; j++) {
-          adj[first].add(borderingIndices[j]);
-          adj[borderingIndices[j]].add(first);
-        }
-      }
-    });
-
-    // 5. Detect structural stone components
-    const stoneInComponent = new Int32Array(stones.length).fill(-1);
-    let compId = 0;
-    for (let i = 0; i < stones.length; i++) {
-      if (stoneInComponent[i] === -1) {
-        const stack = [i];
-        stoneInComponent[i] = compId;
-        while (stack.length > 0) {
-          const curr = stack.pop()!;
-          adj[curr].forEach(next => {
-            if (stoneInComponent[next] === -1) {
-              stoneInComponent[next] = compId;
-              stack.push(next);
-            }
+          const liberties = new Set<string>();
+          stones.forEach(s => {
+            getNeighborsFixed(s, size).forEach(n => {
+              if (board[n.y][n.x] === null) liberties.add(`${n.x},${n.y}`);
+            });
           });
+          chains.push({ stones, liberties });
         }
-        compId++;
+      }
+    }
+    if (chains.length === 0) return;
+
+    // 2. Find all enclosed regions: maximal 4-connected areas of non-`color`
+    //    points (empty + opponent stones). Record surrounding `color` chains.
+    const regions: { emptyPoints: Point[], surroundingChains: Set<number> }[] = [];
+    const rVisited = new Set<string>();
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const k = `${x},${y}`;
+        if (board[y][x] !== color && !rVisited.has(k)) {
+          const emptyPoints: Point[] = [];
+          const surroundingChains = new Set<number>();
+          const stack: Point[] = [{ x, y }];
+          while (stack.length > 0) {
+            const curr = stack.pop()!;
+            const ck = `${curr.x},${curr.y}`;
+            if (rVisited.has(ck)) continue;
+            rVisited.add(ck);
+            if (board[curr.y][curr.x] === null) emptyPoints.push(curr);
+            getNeighborsFixed(curr, size).forEach(n => {
+              if (board[n.y][n.x] === color) {
+                const cid = chainId.get(`${n.x},${n.y}`);
+                if (cid !== undefined) surroundingChains.add(cid);
+              } else if (!rVisited.has(`${n.x},${n.y}`)) {
+                stack.push(n);
+              }
+            });
+          }
+          regions.push({ emptyPoints, surroundingChains });
+        }
       }
     }
 
-    // 6. Map components to bordering eye units
-    const componentToEyes = Array.from({ length: compId }, () => new Set<string>());
-    eyeUnits.forEach(u => {
-      u.neighbors.forEach(nKey => {
-        const sIdx = stoneToIdx.get(nKey);
-        if (sIdx !== undefined) {
-          componentToEyes[stoneInComponent[sIdx]].add(u.id);
-        }
+    // 3. Benson's iterative elimination.
+    // X = candidate alive chains. R = "small" regions (every empty point is a
+    // liberty of at least one surrounding chain).
+    let X = new Set(chains.map((_, i) => i));
+    const isSmall = (r: { emptyPoints: Point[], surroundingChains: Set<number> }): boolean => {
+      if (r.surroundingChains.size === 0) return false;
+      // A region with no empty points is not eyespace (vacuous truth would
+      // wrongly count opponent stones as "eyes").
+      if (r.emptyPoints.length === 0) return false;
+      const allLibs = new Set<string>();
+      r.surroundingChains.forEach(cid => {
+        chains[cid].liberties.forEach(l => allLibs.add(l));
       });
-    });
+      return r.emptyPoints.every(p => allLibs.has(`${p.x},${p.y}`));
+    };
+    const isVitalTo = (r: { emptyPoints: Point[], surroundingChains: Set<number> }, cid: number): boolean => {
+      if (!r.surroundingChains.has(cid)) return false;
+      const libs = chains[cid].liberties;
+      return r.emptyPoints.every(p => libs.has(`${p.x},${p.y}`));
+    };
 
-    // 7. Mark as Immortal if bordering 2+ eye units
-    for (let c = 0; c < compId; c++) {
-      if (componentToEyes[c].size >= 2) {
-        stones.forEach((s, i) => {
-          if (stoneInComponent[i] === c) immortalPoints.add(`${s.x},${s.y}`);
-        });
-        componentToEyes[c].forEach(uId => {
-          const unit = eyeUnits.find(u => u.id === uId);
-          unit?.points.forEach(p => immortalEyes.add(`${p.x},${p.y}`));
-        });
+    let R = regions.filter(isSmall);
+
+    let changed = true;
+    while (changed) {
+      changed = false;
+      // Remove chains with fewer than two vital regions in R.
+      const doomed: number[] = [];
+      X.forEach(cid => {
+        let vitalCount = 0;
+        for (const r of R) {
+          if (isVitalTo(r, cid)) vitalCount++;
+          if (vitalCount >= 2) break;
+        }
+        if (vitalCount < 2) doomed.push(cid);
+      });
+      if (doomed.length > 0) {
+        changed = true;
+        doomed.forEach(cid => X.delete(cid));
+      }
+      // Remove regions with a surrounding chain not in X.
+      const newR = R.filter(r => {
+        for (const cid of r.surroundingChains) {
+          if (!X.has(cid)) return false;
+        }
+        return true;
+      });
+      if (newR.length < R.length) {
+        changed = true;
+        R = newR;
       }
     }
+
+    // 4. Mark surviving chains as immortal; their vital regions as eyes.
+    X.forEach(cid => {
+      chains[cid].stones.forEach(s => immortalPoints.add(`${s.x},${s.y}`));
+    });
+    R.forEach(r => {
+      for (const cid of X) {
+        if (isVitalTo(r, cid)) {
+          r.emptyPoints.forEach(p => immortalEyes.add(`${p.x},${p.y}`));
+          break;
+        }
+      }
+    });
   });
 
   return { points: immortalPoints, eyes: immortalEyes };
@@ -306,16 +325,16 @@ export const countEyes = (board: Intersection[][], group: Point[], color: Player
 export const isInsideEnemyTerritory = (board: Intersection[][], group: Point[], color: Player): boolean => {
     const size = board.length;
     const opponent = color === 'black' ? 'white' : 'black';
-    
+
     const tempBoard = board.map(row => [...row]);
     group.forEach(p => { tempBoard[p.y][p.x] = null; });
-    
+
     const p = group[0];
     const visited = new Set<string>();
     const stack: Point[] = [p];
     const borderingColors = new Set<Player>();
     const edgePointsTouched = new Set<string>();
-    
+
     while(stack.length > 0) {
         const curr = stack.pop()!;
         const key = `${curr.x},${curr.y}`;
@@ -325,7 +344,7 @@ export const isInsideEnemyTerritory = (board: Intersection[][], group: Point[], 
         if (curr.x === 0 || curr.x === size - 1 || curr.y === 0 || curr.y === size - 1) {
             edgePointsTouched.add(key);
         }
-        
+
         const neighbors = getNeighborsFixed(curr, size);
         for(const n of neighbors) {
             const occ = tempBoard[n.y][n.x];
@@ -336,16 +355,16 @@ export const isInsideEnemyTerritory = (board: Intersection[][], group: Point[], 
             }
         }
     }
-    
+
     const totalEdgeIntersections = (size * 4) - 4;
-    
+
     if (borderingColors.size === 1 && borderingColors.has(opponent)) {
         if (edgePointsTouched.size > totalEdgeIntersections * 0.4) {
             return false;
         }
         return true;
     }
-    
+
     return false;
 };
 
@@ -357,7 +376,7 @@ export const guessDeadStones = (board: Intersection[][]): Set<string> => {
     while (changed) {
         changed = false;
         // Create a virtual board where already-marked dead stones are replaced with empty space
-        const virtualBoard = board.map((row, y) => 
+        const virtualBoard = board.map((row, y) =>
             row.map((cell, x) => deadStones.has(`${x},${y}`) ? null : cell)
         );
 
@@ -370,11 +389,11 @@ export const guessDeadStones = (board: Intersection[][]): Set<string> => {
             const eyes = countEyes(virtualBoard, g.group, g.color);
 
             let isDead = false;
-            
+
             // Refinement: Stones remaining in Atari are NOT automatically marked as dead.
-            // They are considered safe by default in the auto-scoring guess unless they are 
+            // They are considered safe by default in the auto-scoring guess unless they are
             // enclosed within enemy territory with insufficient eyes.
-            
+
             // 1. Surrounded/Eye Check
             if (eyes < 2) {
                 if (isInsideEnemyTerritory(virtualBoard, g.group, g.color)) {
@@ -434,15 +453,15 @@ export const getDetailedTerritoryMap = (board: Intersection[][], sekiPoints: Set
         const stack: Point[] = [{ x, y }];
         const borderingColors = new Set<Player>();
         const regionVisited = new Set<string>();
-        
+
         while (stack.length > 0) {
           const curr = stack.pop()!;
           const currKey = `${curr.x},${curr.y}`;
           if (regionVisited.has(currKey)) continue;
-          
+
           regionVisited.add(currKey);
           region.push(curr);
-          
+
           const neighbors = getNeighborsFixed(curr, size);
           for (const n of neighbors) {
             const occupant = board[n.y][n.x];
@@ -453,9 +472,9 @@ export const getDetailedTerritoryMap = (board: Intersection[][], sekiPoints: Set
             }
           }
         }
-        
+
         region.forEach(p => visited.add(`${p.x},${p.y}`));
-        
+
         if (borderingColors.size === 1) {
           const owner = borderingColors.values().next().value;
           region.forEach(p => {
@@ -520,10 +539,10 @@ export const isSelfCapture = (board: Intersection[][], p: Point, color: Player):
   const size = board.length;
   const tempBoard = board.map(row => [...row]);
   tempBoard[p.y][p.x] = color;
-  
+
   const opponent = color === 'black' ? 'white' : 'black';
   const neighbors = getNeighborsFixed(p, size);
-  
+
   for (const n of neighbors) {
     if (tempBoard[n.y][n.x] === opponent) {
       const groupInfo = findGroup(tempBoard, n);
@@ -537,12 +556,12 @@ export const isSelfCapture = (board: Intersection[][], p: Point, color: Player):
   if (groupInfo && getLiberties(tempBoard, groupInfo.group).size === 0) {
     return true;
   }
-  
+
   return false;
 };
 
 export const calculateScores = (
-  board: Intersection[][], 
+  board: Intersection[][],
   captures: { black: number, white: number },
   komi: number,
   reverseKomi: number = 0,
@@ -578,17 +597,17 @@ export const calculateScores = (
   }
 
   const territory = includeTerritory
-    ? calculateTerritory(virtualBoard, ruleset === 'japanese' ? sekiPoints : new Set())
+    ? calculateTerritory(virtualBoard, sekiPoints)
     : { black: 0, white: 0 };
-  
-  const finalCapturesBlack = ruleset === 'japanese' 
-    ? captures.black + (includeDeadAsPrisoners ? extraCaptures.black : 0) 
+
+  const finalCapturesBlack = ruleset === 'japanese'
+    ? captures.black + (includeDeadAsPrisoners ? extraCaptures.black : 0)
     : 0;
-  const finalCapturesWhite = ruleset === 'japanese' 
-    ? captures.white + (includeDeadAsPrisoners ? extraCaptures.white : 0) 
+  const finalCapturesWhite = ruleset === 'japanese'
+    ? captures.white + (includeDeadAsPrisoners ? extraCaptures.white : 0)
     : 0;
 
-  const blackTotal = (ruleset === 'chinese' 
+  const blackTotal = (ruleset === 'chinese'
     ? blackStones + territory.black + reverseKomi
     : territory.black + finalCapturesBlack + reverseKomi) - blackPenalties;
 

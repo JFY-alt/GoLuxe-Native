@@ -28,10 +28,7 @@ export interface GameState {
   handicapPlacementsLeft: number;
   deadStones: Set<string>; // Set of "x,y" strings representing dead stones
   sekiPoints: Set<string>; // Set of "x,y" strings representing territory points nullified by Seki
-  reviewedPoints: Set<string>; // Set of "x,y" strings representing dame points that have been cycled/processed
   ruleset: RuleSet;
-  virtualStone?: { x: number, y: number, color: Player } | null;
-  sekiScanCompleted?: boolean;
 }
 
 export type AiDifficulty = 'beginner' | 'intermediate' | 'advanced' | 'master';

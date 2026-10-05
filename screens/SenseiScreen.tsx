@@ -1,3 +1,8 @@
+import GlassBackdrop from '../components/GlassBackdrop';
+import Dialog from '../components/Dialog';
+import DojoBackdrop from '../components/DojoBackdrop';
+import {resumeBeat,lessonBoard} from '../logic/study';
+import {BackHandler} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import GuideActions from '../components/GuideActions';
 import GuideHeader from '../components/GuideHeader';
@@ -14,7 +19,7 @@ import { renderMarkup } from '../components/Markup';
 import { SENSEI_LESSONS, SenseiBeat, parseSenseiBoard } from '../data/senseiLessons';
 import { checkCaptures, createEmptyBoard, getBoardString, isSelfCapture } from '../logic/goEngine';
 import { Intersection, Point } from '../types';
-import { saveSenseiProgress } from './StudyMenu';
+import { getSenseiProgress, saveSenseiProgress } from './StudyMenu';
 import { C, SERIF } from '../theme';
 
 
@@ -38,6 +43,8 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
   const { mode: themeMode } = useTheme();
   const lesson = SENSEI_LESSONS.find((l) => l.id === topic);
 
+  const [ready,setReady]=useState(false);
+  const [confirmExit,setConfirmExit]=useState(false);
   const [board, setBoard] = useState<Intersection[][]>(() => createEmptyBoard(9));
   const [history, setHistory] = useState<string[]>(() => [getBoardString(createEmptyBoard(9))]);
   const [beatIdx, setBeatIdx] = useState(0);
@@ -50,22 +57,12 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
 
   const beat: SenseiBeat | undefined = lesson?.beats[beatIdx];
 
-  const boardFromDiagram = (rows?: string[]): Intersection[][] => {
-    const b = createEmptyBoard(9);
-    if (!rows) return b;
-    for (const { p, c } of parseSenseiBoard(rows)) b[p.y][p.x] = c;
-    return b;
-  };
-
   const setupBeat = (idx: number) => {
     if (!lesson) return;
     const bt = lesson.beats[idx];
     if (!bt) return;
-    if (bt.board) {
-      const b = boardFromDiagram(bt.board);
-      setBoard(b);
-      setHistory([getBoardString(b)]);
-    }
+    const b=lessonBoard(lesson,idx);
+    setBoard(b);setHistory([getBoardString(b)]);
     setBeatIdx(idx);
     setTapIdx(0);
     setNudge(null);
@@ -77,11 +74,11 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
   };
 
   useEffect(() => {
-    saveSenseiProgress(topic, 0);
-    setupBeat(0);
-    return ()=>{if(nudgeTimer.current)clearTimeout(nudgeTimer.current);};
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let cancelled=false;
+    getSenseiProgress().then(progress=>{if(cancelled||!lesson)return;setupBeat(resumeBeat(lesson,progress[topic]));setReady(true);});
+    return ()=>{cancelled=true;if(nudgeTimer.current)clearTimeout(nudgeTimer.current);};
   }, [topic]);
+  useEffect(()=>{const subscription=BackHandler.addEventListener('hardwareBackPress',()=>{setConfirmExit(true);return true;});return()=>subscription.remove();},[]);
 
   const wrongTap = (msg: string) => {
     setNudge(msg);
@@ -90,7 +87,7 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
   };
 
   const advance = () => {
-    if (!lesson) return;
+    if (!ready||!lesson) return;
     if (beatIdx + 1 >= lesson.beats.length) {
       saveSenseiProgress(topic, lesson.beats.length - 1);
       onExit();
@@ -115,7 +112,7 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
   };
 
   const onBoardTap = (p: Point) => {
-    if (!beat) return;
+    if (!ready||!beat) return;
     if (beat.choices) {
       const choice = beat.choices.find((c) => c.x === p.x && c.y === p.y);
       if (choice && choice.correct) {
@@ -176,16 +173,10 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" />
-      <LinearGradient
-        colors={['rgba(254,243,199,0.05)', 'rgba(254,243,199,0)']}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 0.35 }}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
+      <DojoBackdrop/>
       <SafeAreaView style={{flex:1}} edges={['top','right','bottom','left']}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <GuideHeader/>
+        <GuideHeader boardSize={lesson.boardSize||9}/>
         <View style={styles.boardPad}>
           <Board
             board={board}
@@ -193,7 +184,7 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
             onIntersectionPress={onBoardTap}
             turn="black"
             boardPx={BOARD_PX}
-            interactive
+            interactive={ready}
             showLiberties
             hideAtari={false}
             theme={themeMode === 'light' ? 'washi' : 'classic'}
@@ -205,7 +196,7 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
 
         {/* Sensei card — below the board, never covering it */}
         <View style={[styles.cardWrap,{width:BOARD_PX}]}>
-          <View style={styles.card}>
+          <View style={styles.card}><GlassBackdrop/>
             <View style={styles.cardHeader}>
               <Sensei mood={mood} size={28} />
               <View style={styles.cardHeadText}>
@@ -216,7 +207,7 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
                   {beat.title}
                 </Text>
               </View>
-              <Pressable onPress={onExit} style={styles.exitBtn} accessibilityLabel="Exit lesson">
+              <Pressable onPress={()=>setConfirmExit(true)} style={styles.exitBtn} accessibilityLabel="Exit lesson">
                 <Text style={styles.exitText}>✕</Text>
               </Pressable>
             </View>
@@ -256,6 +247,7 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
         <GuideActions width={BOARD_PX}/>
       </ScrollView>
       </SafeAreaView>
+      <Dialog dialog={confirmExit?{title:'Exit Lesson?',description:'Your progress is saved — you can resume this lesson later.',confirmLabel:'Exit Lesson',danger:true,confirm:onExit}:null} onClose={()=>setConfirmExit(false)}/>
     </View>
   );
 };
@@ -280,8 +272,8 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(253,230,138,0.20)',
-    backgroundColor: 'rgba(20,20,20,0.95)',
+    borderColor: 'rgba(254,243,199,.15)',
+    backgroundColor: 'rgba(255,255,255,.03)',
     paddingHorizontal: 10,
     paddingVertical: 6,
     shadowColor: '#000',
@@ -312,7 +304,7 @@ const styles = StyleSheet.create({
   chip: {
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(253,230,138,0.30)',
+    borderColor: C.white10,
     backgroundColor: 'rgba(252,211,77,0.10)',
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -334,12 +326,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 12,
-    backgroundColor: 'rgba(253,230,138,0.15)',
+    backgroundColor: C.white05,
     borderWidth: 1,
-    borderColor: 'rgba(253,230,138,0.30)',
+    borderColor: C.white10,
     alignItems: 'center',
   },
-  nextText: { color: C.amber100, fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700' },
+  nextText: { color: 'rgba(255,255,255,.60)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700' },
 });
 
 export default SenseiScreen;

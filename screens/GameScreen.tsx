@@ -1,3 +1,5 @@
+import DojoBackdrop from '../components/DojoBackdrop';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import RecordControls from '../components/RecordControls';
 import TimerPanel from '../components/TimerPanel';
 import ScoreModal from '../components/ScoreModal';
@@ -18,7 +20,6 @@ import { GameState, Player, Point, PlayerClock, TimeSettings } from '../types';
 import { AiConfig, AiDifficulty } from './AiSetupMenu';
 import { clockAfterMove, clockDisplay, createClock, tickClock } from '../logic/clocks';
 import { emptyPosition, playMove, passMove, createRecord, appendMove, parseSgf, serializeSgf, RecordNode } from '../logic/sgf';
-import { runSekiDiagnosticOnPoint } from '../logic/scoringReview';
 import { C, SERIF } from '../theme';
 const BOARD_SIZES = [9, 13, 19];
 interface GameScreenProps { mode: 'ai' | '2p'; aiConfig: AiConfig | null; timeSettings: TimeSettings | null; onExit: () => void; }
@@ -56,8 +57,6 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
   const [notice, setNotice] = useState<string | null>(null);
   const [passNotice, setPassNotice] = useState<string | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scanGeneration = useRef(0);
-  const [isAutoScanning, setIsAutoScanning] = useState(false);
   const [fading, setFading] = useState<{ x: number; y: number; color: Player; key: string }[]>([]);
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [recordRoot, setRecordRoot] = useState(() => createRecord(game,7.5));
@@ -73,7 +72,7 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
   const { board, turn, captures, lastMove, phase, winner, ruleset, deadStones, handicapPlacementsLeft: placementsLeft } = game;
   const boardSize = board.length;
   const maxHandicap = handicapType === 'fixed' ? Math.max(1,getHoshiPoints(boardSize).length-1) : 8;
-  const signedKomi = komiDirection === 'standard' ? komiValue : komiDirection === 'reverse' ? -komiValue : .5;
+  const signedKomi = handicapOn ? .5 : komiDirection === 'standard' ? komiValue : komiDirection === 'reverse' ? -komiValue : .5;
   const scoreDetail = useMemo(() => calculateScores(board, captures, signedKomi >= 0 ? signedKomi : 0, signedKomi < 0 ? -signedKomi : 0, phase === 'play' ? guessDeadStones(board) : deadStones, ruleset, game.sekiPoints, true,
     timeSettings?.system === 'ing' ? ((timeSettings.ingPeriods || 0)-clocks.black.ingPeriodsLeft)*2 : 0,
     timeSettings?.system === 'ing' ? ((timeSettings.ingPeriods || 0)-clocks.white.ingPeriodsLeft)*2 : 0, phase !== 'play'), [game,signedKomi,timeSettings,clocks]);
@@ -92,13 +91,13 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
     if(!timeSettings || !gameStarted || phase!=='play') return;
     lastTick.current=Date.now(); const t=setInterval(settleClock,100); return ()=>clearInterval(t);
   },[timeSettings,gameStarted,phase]);
-  useEffect(()=>()=> { scanGeneration.current++; if(noticeTimer.current) clearTimeout(noticeTimer.current); if(fadeTimer.current) clearTimeout(fadeTimer.current); },[]);
+  useEffect(()=>()=> {  if(noticeTimer.current) clearTimeout(noticeTimer.current); if(fadeTimer.current) clearTimeout(fadeTimer.current); },[]);
   const ongoing = phase !== 'ended' && (snapshots.length > 0 || board.some(row=>row.some(Boolean)));
   const ask = (title: string, description: string, confirm: () => void, confirmLabel='Confirm', danger=false) => { setPreviewPoint(null); setDialog({title,description,confirm,confirmLabel,danger}); };
   const handleExit = () => { setShowSidebar(false); if(ongoing) ask('Exit to Main Menu?','Your current game progress will be lost.',onExit,'Exit Game',true); else onExit(); };
   useEffect(()=> { const s=BackHandler.addEventListener('hardwareBackPress',()=> { if(dialog) setDialog(null); else if(showResults) setShowResults(false); else if(showSidebar) setShowSidebar(false); else handleExit(); return true; }); return ()=>s.remove(); },[game,dialog,showSidebar,showResults,snapshots]);
-  const moveAllowed = () => gameRef.current.phase === 'play' && !isAutoScanning && (!timeSettings || gameStarted) && (!aiConfig || gameRef.current.turn === aiConfig.userColor);
-  const setNode = (node: RecordNode) => { recordRef.current=node; setRecordNode(node); updateGame({...node.position, deadStones:new Set(),sekiPoints:new Set(),reviewedPoints:new Set(),virtualStone:null}); setPreviewPoint(null); setPassNotice(null); setSnapshots([]); };
+  const moveAllowed = () => gameRef.current.phase === 'play' && (!timeSettings || gameStarted) && (!aiConfig || gameRef.current.turn === aiConfig.userColor);
+  const setNode = (node: RecordNode) => { recordRef.current=node; setRecordNode(node); updateGame({...node.position, deadStones:new Set(),sekiPoints:new Set()}); setPreviewPoint(null); setPassNotice(null); setSnapshots([]); };
   const commit = (point: Point | null, isAI=false) => {
     if(!isAI && !moveAllowed()) return;
     if(!settleClock()) return;
@@ -111,8 +110,8 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
       const history=[...snapshotsRef.current,historyEntry]; snapshotsRef.current=history; setSnapshots(history);
       recordRef.current=nextNode; setRecordNode(nextNode);
       if(next.phase==='scoring') {
-        next={...next,deadStones:guessDeadStones(next.board),sekiScanCompleted:false};
-        setDialog({title:ruleset==='chinese'?'Chinese Area Scoring':'Japanese Territory Scoring',description:"Optionally run 'Scan Seki' first, toggle any dead stones yourself (your judgment is final), and then select 'Finalize Score' to conclude the game.",confirmLabel:'Start Scoring',confirm:()=>{},noCancel:true});
+        next={...next,deadStones:guessDeadStones(next.board)};
+        setDialog({title:ruleset==='chinese'?'Chinese Area Scoring':'Japanese Territory Scoring',description:"Toggle any dead stones yourself (your judgment is final), and then select 'Finalize Score' to conclude the game.",confirmLabel:'Start Scoring',confirm:()=>{},noCancel:true});
       }
       if(point) {
         const gone: typeof fading=[];
@@ -134,21 +133,21 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
     const group=findGroup(board,p); if(!group) return;
     const next=new Set(deadStones), dead=next.has(`${group.group[0].x},${group.group[0].y}`);
     group.group.forEach(p=>dead?next.delete(`${p.x},${p.y}`):next.add(`${p.x},${p.y}`));
-    updateGame({...game,deadStones:next,virtualStone:null});
+    updateGame({...game,deadStones:next});
   };
   const showIllegalMove=(message:string)=>{
     const ko=message.startsWith('Ko'),fixed=message.startsWith('Fixed handicap');
     setDialog({title:ko?'Ko — one move elsewhere first':fixed?'Hoshi Violation':'Invalid Move',description:ko?(ruleset==='japanese'?'Ko: you cannot immediately recapture and repeat the previous position. Play elsewhere first — then you may capture back.':'Under Chinese rules no board position may ever repeat (positional superko). Choose a different move — even recapturing later is forbidden if it recreates an earlier position.'):fixed?'In Fixed mode, handicap stones must be placed on hoshi (star points).':message.startsWith('Suicide')?'This move would leave your stone with no breathing space.':message,confirmLabel:'Understood',confirm:()=>{},noCancel:true});
   };
   const onIntersectionPress = (p: Point) => {
-    if(showSidebar || dialog || isAutoScanning) return;
-    if(phase==='scoring') { if(board[p.y][p.x]) toggleDeadGroup(p); else if(!game.sekiScanCompleted)updateGame(runSekiDiagnosticOnPoint(game,p)); return; }
+    if(showSidebar || dialog) return;
+    if(phase==='scoring') { if(board[p.y][p.x]) toggleDeadGroup(p); return; }
     if(!moveAllowed()) return;
     try { playMove(game,p,handicapType==='fixed'?getHoshiPoints(boardSize):undefined); } catch(error) { if(!board[p.y][p.x]) showIllegalMove((error as Error).message); setPreviewPoint(null); return; }
     if(previewPoint?.x===p.x && previewPoint?.y===p.y) commit(p); else setPreviewPoint(p);
   };
   const startGame = (size: number, opts?: { hOn?: boolean; hType?: HandicapType; hCount?: number; rSet?: GameState['ruleset']; reset?: boolean }) => {
-    scanGeneration.current++; setIsAutoScanning(false);
+
     const reset=!!opts?.reset || reviewMode;
     const hOn=opts?.hOn ?? (reset?false:handicapOn), hType=opts?.hType??handicapType;
     const hCount=Math.max(1,Math.min(opts?.hCount??(reset?1:handicapCount),hType==='fixed'?getHoshiPoints(size).length-1:8));
@@ -166,7 +165,7 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
   const changeSize = (size: number) => { if(size===boardSize)return; if(ongoing)ask('Change Board Size?','This will start a new game. Current progress will be lost.',()=>startGame(size),'Start New Game');else startGame(size); };
   const reset = () => { if(ongoing)ask('Refresh Board?','This will clear the board and restart the game. History and SGF settings will be lost.',()=>startGame(boardSize,{reset:true}),'Refresh');else startGame(boardSize,{reset:true}); };
   const undo = () => {
-    if(timeSettings || isAutoScanning || phase!=='play')return;
+    if(timeSettings || phase!=='play')return;
     const history=snapshotsRef.current;
     if(!history.length) { if(reviewMode && recordNode.parent)setNode(recordNode.parent);return; }
     let index=history.length-1;
@@ -179,7 +178,7 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
     if(!aiConfig || phase!=='play' || turn===aiConfig.userColor || placementsLeft>0 || (timeSettings&&!gameStarted)) {setAiThinking(false);return;}
     let cancelled=false;
     const t=setTimeout(async()=> { if(cancelled)return;setAiThinking(true);await new Promise(r=>setTimeout(r,600));if(cancelled)return; try {
-      const choice=getBestMove(gameRef.current,aiConfig.difficulty);
+      const choice=getBestMove(gameRef.current,aiConfig.difficulty,signedKomi);
       if(choice==='resign')finish(aiConfig.userColor,'resign');else if(choice==='pass')commit(null,true);else{
         try{playMove(gameRef.current,choice);commit(choice,true);}catch{
           let fallback:Point|null=null;for(let y=0;y<boardSize&&!fallback;y++)for(let x=0;x<boardSize;x++){try{playMove(gameRef.current,{x,y});fallback={x,y};break;}catch{}}
@@ -188,27 +187,11 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
       }
     } catch(error) {setDialog({title:'The AI failed to move',description:'Something went wrong while the AI was thinking. No move was played — your game is exactly as you left it.',confirmLabel:'Retry',noCancel:true,confirm:()=>setAiRetry(n=>n+1),children:<View style={{flexDirection:'row',gap:12}}><Pressable onPress={()=>{setDialog(null);undo();}} style={{flex:1,padding:12,borderWidth:1,borderColor:C.white10,borderRadius:12}}><Text style={{color:C.white40,textAlign:'center',textTransform:'uppercase',fontSize:10}}>Undo</Text></Pressable><Pressable onPress={()=>{setDialog(null);finish(aiConfig.userColor==='black'?'white':'black','resign');}} style={{flex:1,padding:12,borderWidth:1,borderColor:'rgba(239,68,68,.20)',borderRadius:12}}><Text style={{color:'#fee2e2',textAlign:'center',textTransform:'uppercase',fontSize:10}}>Resign</Text></Pressable></View>});} finally {setAiThinking(false);} },500);
     return ()=>{cancelled=true;clearTimeout(t);};
-  },[game.board,turn,phase,aiConfig,placementsLeft,gameStarted,aiRetry]);
-  const scanSeki = async () => {
-    if(phase!=='scoring'||isAutoScanning)return;
-    setIsAutoScanning(true);const generation=++scanGeneration.current;
-    const bLibs=new Set<string>(),wLibs=new Set<string>();getAllGroups(board).forEach(g=>getLiberties(board,g.group).forEach(p=>(g.color==='black'?bLibs:wLibs).add(p)));
-    for(const key of bLibs) if(wLibs.has(key)) {
-      if(gameRef.current.sekiPoints.has(key)||gameRef.current.reviewedPoints.has(key))continue;
-      const [x,y]=key.split(',').map(Number);
-      for(let cycle=0;cycle<3;cycle++) {
-        if(generation!==scanGeneration.current)return;
-        updateGame(runSekiDiagnosticOnPoint(gameRef.current,{x,y}));
-        await new Promise(r=>setTimeout(r,[350,450,200][cycle]));
-      }
-    }
-    if(generation!==scanGeneration.current)return;
-    updateGame({...gameRef.current,sekiScanCompleted:true,virtualStone:null});setIsAutoScanning(false);
-  };
-  const resume = () => {scanGeneration.current++;setIsAutoScanning(false);updateGame({...game,phase:'play',consecutivePasses:0,deadStones:new Set(),sekiPoints:new Set(),reviewedPoints:new Set(),virtualStone:null,sekiScanCompleted:false});setPassNotice(null);};
+  },[game.board,turn,phase,aiConfig,placementsLeft,gameStarted,aiRetry,signedKomi]);
+  const resume = () => {updateGame({...game,phase:'play',consecutivePasses:0,deadStones:new Set(),sekiPoints:new Set()});setPassNotice(null);};
   const finalize = () => {
     const done=()=>finish(scoreDetail.black.total>scoreDetail.white.total?'black':scoreDetail.white.total>scoreDetail.black.total?'white':'draw','points');
-    if(game.sekiScanCompleted)done();else ask('Finalize without seki review?',"The automatic seki scan hasn't run. Shared-liberty positions (seki) may be scored as territory. You can still correct everything by toggling stones yourself — finalize only if the board looks right to you.",done,'Finalize Anyway');
+    done();
   };
   const exportSgf = async () => {
     try {
@@ -225,7 +208,7 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
     try {
       const result=await DocumentPicker.getDocumentAsync({type:'*/*',copyToCacheDirectory:true});if(result.canceled || !result.assets?.length)return;
       const asset=result.assets[0];const text=Platform.OS==='web'?await (await fetch(asset.uri)).text():await new File(asset.uri).text();
-      const parsed=parseSgf(text);scanGeneration.current++;setIsAutoScanning(false);setAiConfig(null);setTimeSettings(null);setGameStarted(true);setHandicapOn(false);setShowResults(false);setShowComment(false);
+      const parsed=parseSgf(text);setAiConfig(null);setTimeSettings(null);setGameStarted(true);setHandicapOn(false);setShowResults(false);setShowComment(false);
       setKomiValue(Math.abs(parsed.komi));setKomiDirection(parsed.komi<0?'reverse':parsed.komi===.5?'none':'standard');setRecordRoot(parsed.root);setReviewMode(true);setNode(parsed.root);setShowSidebar(false);showNotice('SGF loaded — navigate the record or play a continuation');
     } catch(e) {setDialog({title:'Could Not Import SGF',description:(e as Error).message});}
   };
@@ -235,23 +218,23 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
   const actionBtn = (label:string,fn:()=>void,opts?:{disabled?:boolean;danger?:boolean}) => <Pressable onPress={fn} disabled={opts?.disabled} style={({pressed})=>[styles.actionBtn,opts?.danger&&styles.actionBtnDanger,opts?.disabled&&{opacity:.25},pressed&&{transform:[{scale:.95}]}]}><Text style={[styles.actionText,opts?.danger&&styles.actionTextDanger]}>{label}</Text></Pressable>;
   const status=phase==='ended'?'End':phase==='scoring'?'Scoring':placementsLeft?`Place Stones (${placementsLeft})`:aiConfig?aiThinking?'Thinking…':turn===aiConfig.userColor?'Your Turn':'AI Turn':'';
   const resultTitle=game.winReason==='no-result'?'No Result':winner==='draw'?'Draw':`${winner==='black'?'Black':'White'} Wins`;
-  return <View style={styles.root}><StatusBar /><LinearGradient colors={['rgba(254,243,199,.05)','rgba(254,243,199,0)']} style={StyleSheet.absoluteFill} pointerEvents="none" />
+  return <View style={styles.root}><StatusBar /><DojoBackdrop/><SafeAreaView style={{flex:1}} edges={['top','right','bottom','left']}>
     <View style={styles.topbar}>
       <Pressable onPress={()=>{setPreviewPoint(null);setShowSidebar(v=>!v);}} style={styles.gearBtn} accessibilityLabel="Toggle Menu"><GearIcon open={showSidebar} color={themeMode==='light'?'#1c1917':'#ffffff'} /></Pressable>
-      <View style={styles.sizeRow}>{BOARD_SIZES.map(s=><Pressable key={s} onPress={()=>changeSize(s)} disabled={isAutoScanning} style={styles.sizeTab}><Text style={[styles.sizeText,boardSize===s&&styles.sizeTextActive]}>{s}×{s}</Text>{boardSize===s&&<View style={styles.sizeUnderline}/>}</Pressable>)}</View>
+      <View style={styles.sizeRow}>{BOARD_SIZES.map(s=><Pressable key={s} onPress={()=>changeSize(s)}  style={styles.sizeTab}><Text style={[styles.sizeText,boardSize===s&&styles.sizeTextActive]}>{s}×{s}</Text>{boardSize===s&&<View style={styles.sizeUnderline}/>}</Pressable>)}</View>
       <View style={styles.topbarSpacer}/>
     </View>
-    <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+    <ScrollView pointerEvents={showSidebar?'none':'auto'} style={{opacity:showSidebar?0:1}} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
       <View style={styles.titleBlock}><Text style={styles.title}>GoLuxe</Text><View style={styles.subRow}>
         <Pressable disabled={!aiConfig} onPress={()=>{if(!aiConfig)return;const ds:AiDifficulty[]=['beginner','intermediate','advanced','master'];setAiConfig({...aiConfig,difficulty:ds[(ds.indexOf(aiConfig.difficulty)+1)%4]});}}><Text style={styles.subText}>{aiConfig?`Vs AI (${aiConfig.difficulty})`:'Strategic Purity'}</Text></Pressable>
         <Text style={styles.subDot}>•</Text><Pressable onPress={()=>changeRules(ruleset==='chinese'?'japanese':'chinese')}><Text style={[styles.subText,styles.rulesText]}>{ruleset} Rules</Text></Pressable>
       </View></View>
       <View style={[styles.scoreStrip,{maxWidth:boardPx}]}>
         <Pressable onPress={()=>showScore('black')} style={[styles.scoreSide,{opacity:turn==='black'&&phase==='play'?1:themeMode==='light'?.78:.3}]}><View style={[styles.miniStone,{backgroundColor:'#000',borderColor:'rgba(255,255,255,.20)'}]}/><View><Text style={styles.scoreLabel}>Black</Text><Text style={styles.scoreValue}>{scoreDetail.black.total.toFixed(1)}</Text></View></Pressable>
-        <View style={styles.scoreCenter}>{status!==''&&<Text style={styles.statusText}>{status}</Text>}{timeSettings&&phase==='play'&&<Pressable onPress={showClocks}><Text style={styles.clockText}><Text style={turn==='black'?styles.clockActive:styles.clockIdle}>{clockDisplay(clocks.black,timeSettings)}</Text><Text style={styles.clockSep}> | </Text><Text style={turn==='white'?styles.clockActive:styles.clockIdle}>{clockDisplay(clocks.white,timeSettings)}</Text></Text></Pressable>}{passNotice&&<Text style={styles.passNotice}>{passNotice}</Text>}{phase==='scoring'&&<Pressable accessibilityLabel="Scoring Help" onPress={()=>setDialog({title:ruleset==='chinese'?'Chinese Area Scoring':'Japanese Territory Scoring',description:"Optionally run 'Scan Seki' first, toggle any dead stones yourself (your judgment is final), and then select 'Finalize Score' to conclude the game.",confirmLabel:'Start Scoring',confirm:()=>{},noCancel:true})}><Text style={{color:C.amber100}}>?</Text></Pressable>}</View>
+        <View style={styles.scoreCenter}>{status!==''&&<Text style={styles.statusText}>{status}</Text>}{timeSettings&&phase==='play'&&<Pressable onPress={showClocks}><Text style={styles.clockText}><Text style={turn==='black'?styles.clockActive:styles.clockIdle}>{clockDisplay(clocks.black,timeSettings)}</Text><Text style={styles.clockSep}> | </Text><Text style={turn==='white'?styles.clockActive:styles.clockIdle}>{clockDisplay(clocks.white,timeSettings)}</Text></Text></Pressable>}{passNotice&&<Text style={styles.passNotice}>{passNotice}</Text>}{phase==='scoring'&&<Pressable accessibilityLabel="Scoring Help" onPress={()=>setDialog({title:ruleset==='chinese'?'Chinese Area Scoring':'Japanese Territory Scoring',description:"Toggle any dead stones yourself (your judgment is final), and then select 'Finalize Score' to conclude the game.",confirmLabel:'Start Scoring',confirm:()=>{},noCancel:true})}><Text style={{color:C.amber100}}>?</Text></Pressable>}</View>
         <Pressable onPress={()=>showScore('white')} style={[styles.scoreSideRight,{opacity:turn==='white'&&phase==='play'?1:themeMode==='light'?.78:.3}]}><View style={{alignItems:'flex-end'}}><Text style={styles.scoreLabel}>White</Text><Text style={styles.scoreValue}>{scoreDetail.white.total.toFixed(1)}</Text></View><View style={[styles.miniStone,{backgroundColor:'#fff',borderColor:'rgba(0,0,0,.20)'}]}/></Pressable>
       </View>
-      <View style={styles.boardPad}><Board board={board} lastMove={lastMove} previewPoint={previewPoint} onIntersectionPress={onIntersectionPress} turn={turn} boardPx={boardPx} interactive={phase!=='ended'&&!showSidebar&&!dialog&&!isAutoScanning&&(phase==='scoring'||moveAllowed())} showLiberties={showLiberties} showLifeStatus={showLifeStatus} hideAtari={!showAtariWarning} deadStones={deadStones} sekiPoints={game.sekiPoints} reviewedPoints={game.reviewedPoints} virtualStone={game.virtualStone} isScoringMode={phase==='scoring'} ruleset={ruleset} fading={fading} theme={boardTheme}/></View>
+      <View style={styles.boardPad}><Board board={board} lastMove={lastMove} previewPoint={previewPoint} onIntersectionPress={onIntersectionPress} turn={turn} boardPx={boardPx} interactive={phase!=='ended'&&!showSidebar&&!dialog&&(phase==='scoring'||moveAllowed())} showLiberties={showLiberties} showLifeStatus={showLifeStatus} hideAtari={!showAtariWarning} deadStones={deadStones} sekiPoints={game.sekiPoints} isScoringMode={phase==='scoring'} ruleset={ruleset} fading={fading} theme={boardTheme}/></View>
       <View style={styles.noticeBox}><Text style={styles.noticeText}>{phase==='ended'?`${resultTitle}${game.winReason==='resign'?' by resignation':game.winReason==='time'?' on time':game.winReason==='points'?` · ${scoreDetail.black.total.toFixed(1)} to ${scoreDetail.white.total.toFixed(1)}`:''}`:notice||' '}</Text></View>
       {reviewMode&&<View style={{width:boardPx,borderWidth:1,borderColor:C.white10,borderRadius:12,padding:8,gap:10,backgroundColor:'rgba(255,255,255,.03)'}}><RecordControls node={recordNode} onNode={setNode} onNav={navigateRecord} commentVisible={showComment} onComment={()=>setShowComment(v=>!v)}/>{showComment&&recordNode.properties.C&&<Text style={{color:'rgba(255,255,255,.70)',fontFamily:SERIF,fontSize:16}}>{recordNode.properties.C.join('\n')}</Text>}</View>}
       {timeSettings&&!gameStarted&&phase==='play'?<Pressable onPress={()=>{lastTick.current=Date.now();setGameStarted(true);}} style={styles.startGameBtn}><Text style={styles.startGameText}>Start Game</Text></Pressable>:phase==='play'?<View style={[styles.actionRow,{maxWidth:boardPx}]}>
@@ -259,8 +242,9 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
         {actionBtn('Pass',()=>ask('Pass Turn?', 'Both players pass consecutively to enter scoring phase.',()=>commit(null),'Pass'),{disabled:!moveAllowed()||placementsLeft>0||aiThinking||(!reviewMode&&snapshots.length<2)})}
         {actionBtn('Resign',()=>ask('Resign Game?','This will end the game immediately. The opponent wins.',()=>finish(aiConfig?aiConfig.userColor==='black'?'white':'black':turn==='black'?'white':'black','resign'),'Resign',true),{danger:true,disabled:placementsLeft>0})}
         {actionBtn('Refresh',reset)}
-      </View>:phase==='scoring'?<View style={{width:boardPx,gap:8}}><View style={styles.actionRow}>{actionBtn(isAutoScanning?'Scanning…':'Scan Seki',scanSeki,{disabled:isAutoScanning||game.sekiScanCompleted})}{actionBtn('Resume Play',resume,{disabled:isAutoScanning})}</View><Pressable onPress={finalize} disabled={isAutoScanning} style={styles.finalizeBtn}><Text style={styles.finalizeText}>Finalize Score</Text></Pressable></View>:<View style={[styles.actionRow,{maxWidth:boardPx}]}>{actionBtn('Play Again',()=>startGame(boardSize,{reset:true}))}</View>}
+      </View>:phase==='scoring'?<View style={{width:boardPx,gap:8}}><View style={styles.actionRow}>{actionBtn('Resume Play',resume)}</View><Pressable onPress={finalize}  style={styles.finalizeBtn}><Text style={styles.finalizeText}>Finalize Score</Text></Pressable></View>:<View style={[styles.actionRow,{maxWidth:boardPx}]}>{actionBtn('Play Again',()=>startGame(boardSize,{reset:true}))}</View>}
     </ScrollView>
+    </SafeAreaView>
     <Sidebar visible={showSidebar} onClose={()=>setShowSidebar(false)} onExitToMenu={handleExit} showLiberties={showLiberties} setShowLiberties={setShowLiberties} showAtariWarning={showAtariWarning} setShowAtariWarning={setShowAtariWarning} showLifeStatus={showLifeStatus} setShowLifeStatus={setShowLifeStatus} ruleset={ruleset} onRuleset={changeRules} handicapOn={handicapOn} onToggleHandicap={()=>{setShowSidebar(false);startGame(boardSize,{hOn:!handicapOn});}} handicapType={handicapType} onHandicapType={t=>{setHandicapType(t);startGame(boardSize,{hType:t});}} handicapCount={handicapCount} onHandicapCount={n=>{setHandicapCount(n);startGame(boardSize,{hCount:n});}} maxHandicap={maxHandicap} komiDirection={komiDirection} setKomiDirection={setKomiDirection} komiValue={komiValue} setKomiValue={setKomiValue} boardTheme={boardTheme} setBoardTheme={setBoardTheme} onExportSgf={exportSgf} onImportSgf={importSgf}/>
     <Dialog dialog={dialog} onClose={()=>setDialog(null)}/>
     {timeSettings&&<TimerPanel visible={showTimePanel} clocks={clocks} settings={timeSettings} active={turn} phase={phase} onClose={()=>setShowTimePanel(false)}/>}
@@ -277,7 +261,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
-    backgroundColor: '#0d0d0d',
+    backgroundColor: 'transparent',
     borderBottomWidth: 1,
     borderBottomColor: C.white05,
     zIndex: 310,

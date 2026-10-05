@@ -1,5 +1,5 @@
 import { GameState, Intersection, Player, Point, RuleSet } from '../types';
-import { checkCaptures, createEmptyBoard, getBoardString, isSelfCapture } from './goEngine';
+import { checkCaptures, createEmptyBoard, getBoardString, isSelfCapture, isKoViolation } from './goEngine';
 export interface RecordNode {
   properties: Record<string, string[]>;
   parent: RecordNode | null;
@@ -9,7 +9,7 @@ export interface RecordNode {
 }
 export function emptyPosition(size: number, ruleset: RuleSet = 'chinese', handicap = 0): GameState {
   const board = createEmptyBoard(size);
-  return { board, turn: 'black', captures: { black: 0, white: 0 }, lastMove: null, history: [getBoardString(board)], phase: 'play', winner: null, consecutivePasses: 0, handicapPlacementsLeft: handicap, deadStones: new Set(), sekiPoints: new Set(), reviewedPoints: new Set(), ruleset, virtualStone: null, sekiScanCompleted: false };
+  return { board, turn: 'black', captures: { black: 0, white: 0 }, lastMove: null, history: [getBoardString(board)], phase: 'play', winner: null, consecutivePasses: 0, handicapPlacementsLeft: handicap, deadStones: new Set(), sekiPoints: new Set(), ruleset };
 }
 export const encodePoint = (p: Point) => String.fromCharCode(97 + p.x) + String.fromCharCode(97 + p.y);
 const other = (p: Player): Player => p === 'black' ? 'white' : 'black';
@@ -22,7 +22,7 @@ export function playMove(state: GameState, point: Point, fixedStars?: Point[]): 
   const placed = board.map(row => [...row]); placed[point.y][point.x] = turn;
   const captured = state.handicapPlacementsLeft ? { newBoard: placed, captureCount: 0 } : checkCaptures(placed, point, turn);
   const hash = getBoardString(captured.newBoard);
-  if (!state.handicapPlacementsLeft && (state.ruleset === 'chinese' ? state.history.includes(hash) : state.history.length >= 2 && hash === state.history[state.history.length - 2])) throw new Error('Ko — play elsewhere first');
+  if (!state.handicapPlacementsLeft && isKoViolation(hash, state.history, state.ruleset)) throw new Error('Ko — play elsewhere first');
   return { ...state, board: captured.newBoard, captures: { ...state.captures, [turn]: state.captures[turn] + captured.captureCount }, turn: state.handicapPlacementsLeft > 1 ? 'black' : other(turn), lastMove: point, history: state.handicapPlacementsLeft ? [hash] : [...state.history, hash], handicapPlacementsLeft: Math.max(0, state.handicapPlacementsLeft - 1), consecutivePasses: 0 };
 }
 export function passMove(state: GameState): GameState {

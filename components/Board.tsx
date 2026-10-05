@@ -28,8 +28,6 @@ interface BoardProps {
   board: Intersection[][];
   previewPoint?: Point | null;
   sekiPoints?: Set<string>;
-  reviewedPoints?: Set<string>;
-  virtualStone?: { x: number; y: number; color: Player } | null;
   isScoringMode?: boolean;
   ruleset?: 'japanese'|'chinese';
   lastMove: Point | null;
@@ -135,8 +133,6 @@ const Board: React.FC<BoardProps> = ({
   board,
   previewPoint = null,
   sekiPoints = new Set(),
-  reviewedPoints = new Set(),
-  virtualStone = null,
   isScoringMode = false,
   ruleset = 'chinese',
   lastMove,
@@ -181,7 +177,7 @@ const Board: React.FC<BoardProps> = ({
   const hoshiD = boardPx * 0.012;
 
   const hoshi = useMemo(()=>displayHoshiPoints(size),[size]);
-  const info=useMemo(()=>boardPresentation(board,isScoringMode,sekiPoints,virtualStone),[board,isScoringMode,sekiPoints,virtualStone]);
+  const info=useMemo(()=>boardPresentation(board,isScoringMode,sekiPoints),[board,isScoringMode,sekiPoints]);
   const atariPoints=hideAtari?new Set<string>():info.atari;
   const immortalPoints=info.immortal,immortalEyes=info.eyes;
   const liberties={bLibs:info.bLibs,wLibs:info.wLibs};
@@ -292,7 +288,7 @@ const Board: React.FC<BoardProps> = ({
             </View>,
           );
         } else if (!previewPoint || previewPoint.x!==x || previewPoint.y!==y) {
-          if(virtualStone?.x===x && virtualStone?.y===y)continue;
+
           const shared=liberties.bLibs.has(key)&&liberties.wLibs.has(key);
           const sekiPoint=isScoringMode&&sekiPoints.has(key)&&ruleset==='japanese';
           const center=(d:number,style:any)=><View pointerEvents="none" key={`aid-${key}-${d}`} style={{position:'absolute',left:cx-d/2,top:cy-d/2,width:d,height:d,borderRadius:d/2,zIndex:10,...style}}/>;
@@ -308,7 +304,7 @@ const Board: React.FC<BoardProps> = ({
             if(sekiPoint)els.push(<View pointerEvents="none" key={`seki-${key}`} style={{position:'absolute',left:cx-9.6,top:cy-9.6,width:19.2,height:19.2,borderRadius:9.6,borderWidth:1.5,borderColor:'rgba(255,255,255,.20)',backgroundColor:'rgba(255,255,255,.05)',alignItems:'center',justifyContent:'center',zIndex:10}}><View style={{width:4,height:4,borderRadius:2,backgroundColor:'rgba(255,255,255,.20)'}}/></View>);
             if(showLiberties&&!sekiPoint&&(shared||!isScoringMode&&(liberties.bLibs.has(key)||liberties.wLibs.has(key)))){
               const color=shared?'#34d399':liberties.bLibs.has(key)?'#fde68a':'#38bdf8';
-              els.push(center(6,{backgroundColor:color,opacity:shared&&reviewedPoints.has(key)?.2:1,shadowColor:color,shadowOpacity:.8,shadowRadius:8}));
+              els.push(center(6,{backgroundColor:color,opacity:1,shadowColor:color,shadowOpacity:.8,shadowRadius:8}));
             }
           }
         }
@@ -340,10 +336,6 @@ const Board: React.FC<BoardProps> = ({
     if (previewPoint && !isScoringMode) {
       const d = step * .94;
       els.push(<View pointerEvents="none" key="preview" style={{ position: 'absolute', left: pointXY(previewPoint.x)-d/2, top: pointXY(previewPoint.y)-d/2, width:d,height:d,opacity:.60,zIndex:28 }}><Stone color={turn} size={d}/><View style={{position:'absolute',left:d*.325,top:d*.325,width:d*.35,height:d*.35,borderRadius:d*.175,borderWidth:2,borderColor:'rgba(255,255,255,.20)'}}/></View>);
-    }
-    if (virtualStone) {
-      const d = step * .85;
-      els.push(<View pointerEvents="none" key="virtual" style={{ position:'absolute',left:pointXY(virtualStone.x)-d/2,top:pointXY(virtualStone.y)-d/2,opacity:.8,zIndex:28 }}><PulseView style={{position:'absolute',width:d,height:d,borderRadius:d/2,borderWidth:2,borderColor:'rgba(253,230,138,.20)'}}/><Stone color={virtualStone.color} size={d}/></View>);
     }
     // Amber pulsing tap targets (web: animate-ping halo + solid core)
     targets.forEach((t, i) => {
