@@ -233,6 +233,17 @@ const Board: React.FC<BoardProps> = ({
           const isDead = !!deadStones?.has(key);
           const isImmortal = showLifeStatus && immortalPoints.has(key);
           const isSeki = isScoringMode && info.sekiStones.has(key);
+          // Life rings belong below atari connectors (9) and warning dots (10).
+          // Nesting them inside the stone's layer (20) obscures nearby warnings.
+          if (isImmortal || isSeki) els.push(
+            <View pointerEvents="none" key={`life-${key}`} style={{
+              position: 'absolute', left: cx - stoneD * 0.6, top: cy - stoneD * 0.6,
+              width: stoneD * 1.2, height: stoneD * 1.2, borderRadius: stoneD * 0.6,
+              zIndex: 8, borderWidth: 2,
+              borderColor: isSeki ? 'rgba(52,211,153,.50)' : isScoringMode ? 'rgba(192,132,252,.20)' : 'rgba(192,132,252,.40)',
+              shadowColor: '#c084fc', shadowOpacity: 0.3, shadowRadius: 8,
+            }}/>
+          );
           els.push(
             <View
               pointerEvents="none"
@@ -245,23 +256,6 @@ const Board: React.FC<BoardProps> = ({
                 opacity: isDead ? 0.4 : 1,
               }}
             >
-              {(isImmortal || isSeki) && (
-                <View
-                  style={{
-                    position: 'absolute',
-                    left: -stoneD * 0.1,
-                    top: -stoneD * 0.1,
-                    width: stoneD * 1.2,
-                    height: stoneD * 1.2,
-                    borderRadius: stoneD * 0.6,
-                    borderWidth: 2,
-                    borderColor: isSeki ? 'rgba(52,211,153,.50)' : isScoringMode?'rgba(192,132,252,.20)':'rgba(192,132,252,.40)',
-                    shadowColor: '#c084fc',
-                    shadowOpacity: 0.3,
-                    shadowRadius: 8,
-                  }}
-                />
-              )}
               <Stone color={stone} size={stoneD} />
               {isDead && (
                 <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
@@ -292,7 +286,7 @@ const Board: React.FC<BoardProps> = ({
           const shared=liberties.bLibs.has(key)&&liberties.wLibs.has(key);
           const sekiPoint=isScoringMode&&sekiPoints.has(key)&&ruleset==='japanese';
           const center=(d:number,style:any)=><View pointerEvents="none" key={`aid-${key}-${d}`} style={{position:'absolute',left:cx-d/2,top:cy-d/2,width:d,height:d,borderRadius:d/2,zIndex:10,...style}}/>;
-          if(showLifeStatus&&immortalEyes.has(key)){
+          if(showLifeStatus&&immortalEyes.has(key)&&!atariPoints.has(key)){
             els.push(center(16,{borderWidth:2,borderColor:'rgba(192,132,252,.60)',backgroundColor:'rgba(168,85,247,.10)',shadowColor:'#c084fc',shadowOpacity:.5,shadowRadius:8}));
           }else{
             if(!hideAtari&&atariPoints.has(key)){

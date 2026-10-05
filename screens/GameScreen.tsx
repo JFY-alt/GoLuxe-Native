@@ -1,5 +1,5 @@
 import DojoBackdrop from '../components/DojoBackdrop';
-import {SafeAreaView} from 'react-native-safe-area-context';
+import {SafeAreaView, useSafeAreaInsets} from 'react-native-safe-area-context';
 import RecordControls from '../components/RecordControls';
 import TimerPanel from '../components/TimerPanel';
 import ScoreModal from '../components/ScoreModal';
@@ -26,6 +26,8 @@ interface GameScreenProps { mode: 'ai' | '2p'; aiConfig: AiConfig | null; timeSe
 interface Snapshot { position: GameState; node: RecordNode; }
 export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: initialTime, onExit }: GameScreenProps) {
   const { mode: themeMode } = useTheme();
+  const insets = useSafeAreaInsets();
+  const [exiting, setExiting] = useState(false);
   const { width, height } = useWindowDimensions();
   const boardPx = Math.min(width * .85, height * .52);
   const [game, setGame] = useState(() => emptyPosition(9));
@@ -94,7 +96,12 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
   useEffect(()=>()=> {  if(noticeTimer.current) clearTimeout(noticeTimer.current); if(fadeTimer.current) clearTimeout(fadeTimer.current); },[]);
   const ongoing = phase !== 'ended' && (snapshots.length > 0 || board.some(row=>row.some(Boolean)));
   const ask = (title: string, description: string, confirm: () => void, confirmLabel='Confirm', danger=false) => { setPreviewPoint(null); setDialog({title,description,confirm,confirmLabel,danger}); };
-  const handleExit = () => { setShowSidebar(false); if(ongoing) ask('Exit to Main Menu?','Your current game progress will be lost.',onExit,'Exit Game',true); else onExit(); };
+  const handleExit = () => {
+    ask('Exit to Main Menu?', 'Your current game progress will be lost.', () => {
+      setExiting(true);
+      onExit();
+    }, 'Exit Game', true);
+  };
   useEffect(()=> { const s=BackHandler.addEventListener('hardwareBackPress',()=> { if(dialog) setDialog(null); else if(showResults) setShowResults(false); else if(showSidebar) setShowSidebar(false); else handleExit(); return true; }); return ()=>s.remove(); },[game,dialog,showSidebar,showResults,snapshots]);
   const moveAllowed = () => gameRef.current.phase === 'play' && (!timeSettings || gameStarted) && (!aiConfig || gameRef.current.turn === aiConfig.userColor);
   const setNode = (node: RecordNode) => { recordRef.current=node; setRecordNode(node); updateGame({...node.position, deadStones:new Set(),sekiPoints:new Set()}); setPreviewPoint(null); setPassNotice(null); setSnapshots([]); };
@@ -219,12 +226,12 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
   const status=phase==='ended'?'End':phase==='scoring'?'Scoring':placementsLeft?`Place Stones (${placementsLeft})`:aiConfig?aiThinking?'Thinking…':turn===aiConfig.userColor?'Your Turn':'AI Turn':'';
   const resultTitle=game.winReason==='no-result'?'No Result':winner==='draw'?'Draw':`${winner==='black'?'Black':'White'} Wins`;
   return <View style={styles.root}><StatusBar /><DojoBackdrop/><SafeAreaView style={{flex:1}} edges={['top','right','bottom','left']}>
-    <View style={styles.topbar}>
-      <Pressable onPress={()=>{setPreviewPoint(null);setShowSidebar(v=>!v);}} style={styles.gearBtn} accessibilityLabel="Toggle Menu"><GearIcon open={showSidebar} color={themeMode==='light'?'#1c1917':'#ffffff'} /></Pressable>
+    <View pointerEvents={showSidebar?'none':'auto'} accessibilityElementsHidden={showSidebar} importantForAccessibility={showSidebar?'no-hide-descendants':'auto'} style={[styles.topbar,{opacity:showSidebar?0:1}]}>
+      <View style={styles.topbarSpacer}/>
       <View style={styles.sizeRow}>{BOARD_SIZES.map(s=><Pressable key={s} onPress={()=>changeSize(s)}  style={styles.sizeTab}><Text style={[styles.sizeText,boardSize===s&&styles.sizeTextActive]}>{s}×{s}</Text>{boardSize===s&&<View style={styles.sizeUnderline}/>}</Pressable>)}</View>
       <View style={styles.topbarSpacer}/>
     </View>
-    <ScrollView pointerEvents={showSidebar?'none':'auto'} style={{opacity:showSidebar?0:1}} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+    <ScrollView pointerEvents={showSidebar||exiting?'none':'auto'} style={{opacity:showSidebar||exiting?0:1}} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
       <View style={styles.titleBlock}><Text style={styles.title}>GoLuxe</Text><View style={styles.subRow}>
         <Pressable disabled={!aiConfig} onPress={()=>{if(!aiConfig)return;const ds:AiDifficulty[]=['beginner','intermediate','advanced','master'];setAiConfig({...aiConfig,difficulty:ds[(ds.indexOf(aiConfig.difficulty)+1)%4]});}}><Text style={styles.subText}>{aiConfig?`Vs AI (${aiConfig.difficulty})`:'Strategic Purity'}</Text></Pressable>
         <Text style={styles.subDot}>•</Text><Pressable onPress={()=>changeRules(ruleset==='chinese'?'japanese':'chinese')}><Text style={[styles.subText,styles.rulesText]}>{ruleset} Rules</Text></Pressable>
@@ -246,6 +253,13 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
     </ScrollView>
     </SafeAreaView>
     <Sidebar visible={showSidebar} onClose={()=>setShowSidebar(false)} onExitToMenu={handleExit} showLiberties={showLiberties} setShowLiberties={setShowLiberties} showAtariWarning={showAtariWarning} setShowAtariWarning={setShowAtariWarning} showLifeStatus={showLifeStatus} setShowLifeStatus={setShowLifeStatus} ruleset={ruleset} onRuleset={changeRules} handicapOn={handicapOn} onToggleHandicap={()=>{setShowSidebar(false);startGame(boardSize,{hOn:!handicapOn});}} handicapType={handicapType} onHandicapType={t=>{setHandicapType(t);startGame(boardSize,{hType:t});}} handicapCount={handicapCount} onHandicapCount={n=>{setHandicapCount(n);startGame(boardSize,{hCount:n});}} maxHandicap={maxHandicap} komiDirection={komiDirection} setKomiDirection={setKomiDirection} komiValue={komiValue} setKomiValue={setKomiValue} boardTheme={boardTheme} setBoardTheme={setBoardTheme} onExportSgf={exportSgf} onImportSgf={importSgf}/>
+    {/* Root sibling of the sidebar: a child zIndex cannot escape SafeAreaView. */}
+    <Pressable disabled={exiting} accessibilityRole="button" accessibilityLabel={showSidebar?'Close settings':'Open settings'}
+      accessibilityState={{expanded:showSidebar,disabled:exiting}}
+      onPress={()=>{setPreviewPoint(null);setShowSidebar(v=>!v);}}
+      style={[styles.gearBtn,{position:'absolute',top:insets.top+6,left:insets.left+8}]}>
+      <GearIcon open={showSidebar} color={showSidebar?'#ffffff':themeMode==='light'?'#1c1917':'#ffffff'}/>
+    </Pressable>
     <Dialog dialog={dialog} onClose={()=>setDialog(null)}/>
     {timeSettings&&<TimerPanel visible={showTimePanel} clocks={clocks} settings={timeSettings} active={turn} phase={phase} onClose={()=>setShowTimePanel(false)}/>}
     <ScoreModal scores={scoreDetail} ruleset={ruleset} player={scorePlayer} results={showResults} winner={winner} reason={game.winReason} onClose={()=>{setShowResults(false);setScorePlayer(null);}} onNewGame={()=>{setScorePlayer(null);startGame(boardSize,{reset:true});}}/>

@@ -18,3 +18,14 @@ test('scoring presentation uses the real board without introducing diagnostic st
  const p=boardPresentation(b,true,new Set());
  assert.equal(p.atari.size,0);assert.equal(JSON.stringify(b),before);assert.equal(p.wLibs.has('3,4'),true);
 });
+
+test('alive chains and nearby atari retain independent status on the same board',()=>{
+ const b=createEmptyBoard(9);
+ for(let y=0;y<9;y++)for(let x=0;x<9;x++)b[y][x]='black';
+ b[1][1]=null;b[1][3]=null; // Two eyes keep the surrounding black chain alive.
+ b[7][7]='white';b[7][8]=null; // White has exactly one liberty beside that chain.
+ const before=JSON.stringify(b),p=boardPresentation(b,false,new Set());
+ assert.ok(p.immortal.has('8,6'));assert.ok(p.eyes.has('1,1'));
+ assert.ok(p.atari.has('8,7'));assert.deepEqual(atariConnections(b,{x:8,y:7}),[{x:-1,y:0}]);
+ assert.equal(JSON.stringify(b),before);
+});

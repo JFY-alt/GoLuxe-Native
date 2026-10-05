@@ -46,11 +46,12 @@ function Navigator() {
     opacity.value = withTiming(0, { duration: 500 });
     navTimer.current = setTimeout(() => {
       changeScreen(next);
-      opacity.value = withTiming(1, { duration: next==='menu'?700:500 });
       navTimer.current = null;
     }, 500);
   };
-  useEffect(() => { opacity.value = withTiming(1, { duration: 700 }); }, []);
+  // Start the incoming fade after the new route has committed, not while the
+  // outgoing route is still mounted at the end of the navigation timer.
+  useEffect(() => { opacity.value = withTiming(1, { duration: screen==='menu'?700:500 }); }, [screen]);
   useEffect(() => () => { if (navTimer.current) clearTimeout(navTimer.current); }, []);
   useEffect(() => {
     const back: Partial<Record<Screen, Screen>> = { modes: 'menu', aiSetup: 'modes', passPlaySub: 'modes', timedSetup: 'passPlaySub', whatIsGo: 'menu', howToPlay: 'menu', study: 'menu', sensei: 'study' };
@@ -81,7 +82,7 @@ function Navigator() {
   };
 
   return (
-    <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: cinemaMenu?'#000':themeMode === 'light' ? '#fafaf9' : C.bg }]}>{cinemaMenu?<NativeStatusBar barStyle="light-content" backgroundColor="#000"/>:<StatusBar />}<Animated.View style={[{ flex: 1 }, routeStyle]}><ThemeScope mode={cinemaMenu?'dark':themeMode}>
+    <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: '#000' }]}>{cinemaMenu?<NativeStatusBar barStyle="light-content" backgroundColor="#000"/>:<StatusBar />}<Animated.View style={[{ flex: 1 }, routeStyle]}><ThemeScope mode={cinemaMenu?'dark':themeMode}>
       <View pointerEvents={screen==='menu'?'auto':'none'} accessibilityElementsHidden={screen!=='menu'} importantForAccessibility={screen==='menu'?'auto':'no-hide-descendants'} style={[StyleSheet.absoluteFill,{opacity:screen==='menu'?1:0}]}>
         <ScreenFade key="menu">
           <MainMenu

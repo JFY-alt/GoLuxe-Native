@@ -1,4 +1,5 @@
 import GlassBackdrop from './GlassBackdrop';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import { ThemeToggle, useTheme, TextInput } from '../ui';
 import { Pressable, ScrollView, Text, View, LinearGradient, AnimatedView } from '../ui';
 import React, { useState } from 'react';
@@ -100,6 +101,7 @@ const B: React.FC<{ children: string }> = ({ children }) => <Text style={styles.
 const Sidebar: React.FC<SidebarProps> = (p) => {
   const { mode: themeMode } = useTheme();
   const visibleThemes = themeMode === 'light' ? ['washi','maple','riverstone'] : ['espresso','classic','midnight'];
+  const insets = useSafeAreaInsets();
   const [customKomi, setCustomKomi] = useState('');
   const [help, setHelp] = useState<null | 'fundamentals' | 'concepts' | 'practice' | 'handicap' | 'sgf'>(null);
   const [confirmHandicap, setConfirmHandicap] = useState(false);
@@ -122,7 +124,10 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
+      <View style={{flex:1, marginTop:insets.top+60, marginBottom:insets.bottom, overflow:'hidden'}}>
       <ScrollView
+        style={{flex:1}}
+        bounces
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
@@ -273,6 +278,7 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
           </View>
         </View>
       </ScrollView>
+      </View>
 
       {/* handicap confirm */}
       <Modal visible={confirmHandicap} transparent animationType="fade" onRequestClose={() => setConfirmHandicap(false)}>
@@ -384,7 +390,7 @@ const styles = StyleSheet.create({
     zIndex: 300,
     backgroundColor: 'rgba(0,0,0,.75)',
   },
-  scroll: { paddingTop: 80, paddingBottom: 48, alignItems: 'center' },
+  scroll: { paddingTop: 20, paddingBottom: 48, alignItems: 'center' },
   nav: { width: '100%', maxWidth: 420, paddingHorizontal: 24, gap: 40 },
   section: {},
   secHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },

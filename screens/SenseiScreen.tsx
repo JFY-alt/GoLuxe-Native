@@ -175,7 +175,7 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
       <StatusBar barStyle="light-content" />
       <DojoBackdrop/>
       <SafeAreaView style={{flex:1}} edges={['top','right','bottom','left']}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{opacity: ready ? 1 : 0}} pointerEvents={ready ? 'auto' : 'none'} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <GuideHeader boardSize={lesson.boardSize||9}/>
         <View style={styles.boardPad}>
           <Board
