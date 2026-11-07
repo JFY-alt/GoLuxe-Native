@@ -1,10 +1,19 @@
+import SavedRecordLibrary from '../components/SavedRecordLibrary';
+import {encodeSession,LiveSession,recoverSession} from '../logic/gameSession';
+import {saveSession,saveClockCheckpoint} from '../storage/gameSession';
+import {remainingFixedHandicapPoints} from '../logic/handicap';
+import {recordForArchive} from '../logic/gameArchive';
+import {saveRecord} from '../storage/gameArchive';
+import {useBoardPreferences} from '../hooks/useBoardPreferences';
+import {survivingMoveNumbers} from '../logic/recordPresentation';
+import {signedCompensation} from '../logic/scoring';
 import DojoBackdrop from '../components/DojoBackdrop';
 import {SafeAreaView, useSafeAreaInsets} from 'react-native-safe-area-context';
 import RecordControls from '../components/RecordControls';
 import TimerPanel from '../components/TimerPanel';
 import ScoreModal from '../components/ScoreModal';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, Platform, Share, StyleSheet, useWindowDimensions } from 'react-native';
+import { AppState, BackHandler, Platform, Share, StyleSheet, useWindowDimensions } from 'react-native';
 import { Pressable, ScrollView, StatusBar, Text, View, LinearGradient, AnimatedView, ThemeToggle, useTheme } from '../ui';
 import { FadeIn, ZoomIn } from 'react-native-reanimated';
 import * as DocumentPicker from 'expo-document-picker';
@@ -15,27 +24,29 @@ import GearIcon from '../components/GearIcon';
 import Sidebar, { BoardTheme, HandicapType, KomiDirection } from '../components/Sidebar';
 import Dialog, { DialogState } from '../components/Dialog';
 import { calculateScores, findGroup, getAllGroups, getBoardString, getHoshiPoints, getLiberties, guessDeadStones } from '../logic/goEngine';
-import { getBestMove } from '../logic/simpleAi';
+import { getBestMoveAsync } from '../logic/simpleAi';
 import { GameState, Player, Point, PlayerClock, TimeSettings } from '../types';
 import { AiConfig, AiDifficulty } from './AiSetupMenu';
 import { clockAfterMove, clockDisplay, createClock, tickClock } from '../logic/clocks';
-import { emptyPosition, playMove, passMove, createRecord, appendMove, parseSgf, serializeSgf, RecordNode } from '../logic/sgf';
+import { emptyPosition, playMove, passMove, createRecord, appendMove, rewindHandicapSetup, parseSgf, serializeSgf, RecordNode } from '../logic/sgf';
 import { C, SERIF } from '../theme';
 const BOARD_SIZES = [9, 13, 19];
-interface GameScreenProps { mode: 'ai' | '2p'; aiConfig: AiConfig | null; timeSettings: TimeSettings | null; onExit: () => void; }
+interface GameScreenProps { mode: 'ai' | '2p'; aiConfig: AiConfig | null; timeSettings: TimeSettings | null; initialSession?:LiveSession|null; onExit: () => void; }
 interface Snapshot { position: GameState; node: RecordNode; }
-export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: initialTime, onExit }: GameScreenProps) {
+export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: initialTime, initialSession, onExit }: GameScreenProps) {
+  const [restored]=useState(()=>initialSession?recoverSession(initialSession,Date.now()):null);
   const { mode: themeMode } = useTheme();
   const insets = useSafeAreaInsets();
+  const [appActive,setAppActive]=useState(AppState.currentState!=='background'&&AppState.currentState!=='inactive');
   const [exiting, setExiting] = useState(false);
   const { width, height } = useWindowDimensions();
   const boardPx = Math.min(width * .85, height * .52);
-  const [game, setGame] = useState(() => emptyPosition(9));
+  const [game, setGame] = useState(() => restored?.game ?? emptyPosition(9));
   const gameRef = useRef(game); gameRef.current = game;
   const updateGame = (next: GameState) => { gameRef.current = next; setGame(next); };
-  const [aiConfig, setAiConfig] = useState(initialAI);
-  const [timeSettings, setTimeSettings] = useState(initialTime);
-  const [gameStarted, setGameStarted] = useState(!initialTime);
+  const [aiConfig, setAiConfig] = useState(restored?.aiConfig ?? initialAI);
+  const [timeSettings, setTimeSettings] = useState(restored?.timeSettings ?? initialTime);
+  const [gameStarted, setGameStarted] = useState(restored?.gameStarted ?? !initialTime);
   const [aiThinking, setAiThinking] = useState(false);
   const [aiRetry, setAiRetry] = useState(0);
   const [showSidebar, setShowSidebar] = useState(false);
@@ -50,46 +61,54 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
   useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [previewPoint, setPreviewPoint] = useState<Point | null>(null);
-  const [showResults, setShowResults] = useState(false);
+  const [showResults, setShowResults] = useState(restored?.game.phase==='ended');
+  const [scoringTool, setScoringTool] = useState<'dead' | 'seki'>(restored?.scoringTool ?? 'dead');
   const [showTimePanel, setShowTimePanel] = useState(false);
   const [scorePlayer,setScorePlayer]=useState<Player|null>(null);
-  const [showLiberties, setShowLiberties] = useState(true);
-  const [showAtariWarning, setShowAtariWarning] = useState(true);
-  const [showLifeStatus, setShowLifeStatus] = useState(true);
-  const [darkBoardTheme, setDarkBoardTheme] = useState<BoardTheme>('classic');
-  const [lightBoardTheme, setLightBoardTheme] = useState<BoardTheme>('washi');
-  const boardTheme = themeMode === 'light' ? lightBoardTheme : darkBoardTheme;
-  const setBoardTheme = themeMode === 'light' ? setLightBoardTheme : setDarkBoardTheme;
-  const [handicapOn, setHandicapOn] = useState(false);
-  const [handicapType, setHandicapType] = useState<HandicapType>('fixed');
-  const [handicapCount, setHandicapCount] = useState(1);
-  const [komiDirection, setKomiDirection] = useState<KomiDirection>('standard');
-  const [komiValue, setKomiValue] = useState(7.5);
-  const [customKomi, setCustomKomi] = useState('');
+  const {preferences,update:updatePreferences,saveFailed:preferencesSaveFailed}=useBoardPreferences();
+  const {coordinates:showCoordinates,moveNumbers:showMoveNumbers,liberties:showLiberties,atari:showAtariWarning,lifeStatus:showLifeStatus}=preferences;
+  const setShowCoordinates=(value:boolean)=>updatePreferences({coordinates:value});
+  const setShowMoveNumbers=(value:boolean)=>updatePreferences({moveNumbers:value});
+  const setShowLiberties=(value:boolean)=>updatePreferences({liberties:value});
+  const setShowAtariWarning=(value:boolean)=>updatePreferences({atari:value});
+  const setShowLifeStatus=(value:boolean)=>updatePreferences({lifeStatus:value});
+  const boardTheme=themeMode==='light'?preferences.lightTheme:preferences.darkTheme;
+  const setBoardTheme=(value:BoardTheme)=>{
+    if(value==='washi'||value==='maple'||value==='riverstone')updatePreferences({lightTheme:value});
+    else updatePreferences({darkTheme:value});
+  };
+  const [handicapOn, setHandicapOn] = useState(restored?.handicapOn ?? false);
+  const [handicapType, setHandicapType] = useState<HandicapType>(restored?.handicapType ?? 'fixed');
+  const [handicapCount, setHandicapCount] = useState(restored?.handicapCount ?? 1);
+  const [komiDirection, setKomiDirection] = useState<KomiDirection>(restored?.komiDirection ?? 'standard');
+  const [komiValue, setKomiValue] = useState(restored?.komiValue ?? 7.5);
+  const [customKomi, setCustomKomi] = useState(restored?.customKomi ?? '');
   const [notice, setNotice] = useState<string | null>(null);
   const [passNotice, setPassNotice] = useState<string | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [fading, setFading] = useState<{ x: number; y: number; color: Player; key: string }[]>([]);
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [recordRoot, setRecordRoot] = useState(() => createRecord(game,7.5));
-  const [recordNode, setRecordNode] = useState<RecordNode>(recordRoot);
+  const [recordRoot, setRecordRoot] = useState(() => restored?.root ?? createRecord(game,7.5));
+  const [recordNode, setRecordNode] = useState<RecordNode>(restored?.selected ?? recordRoot);
+  const visibleMoveNumbers=useMemo(()=>showMoveNumbers?survivingMoveNumbers(recordNode):undefined,[recordNode,showMoveNumbers,game.board]);
   const recordRef = useRef(recordNode); recordRef.current = recordNode;
-  const [reviewMode, setReviewMode] = useState(false);
+  const [reviewMode, setReviewMode] = useState(restored?.reviewMode ?? false);
+  const [libraryVisible,setLibraryVisible]=useState(false);
   const [showComment, setShowComment] = useState(false);
-  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const [snapshots, setSnapshots] = useState<Snapshot[]>(restored?.snapshots ?? []);
   const snapshotsRef = useRef(snapshots); snapshotsRef.current = snapshots;
-  const [clocks, setClocks] = useState(() => ({ black: createClock(initialTime,(initialTime?.mainTimeMinutes ?? 30)*60000), white: createClock(initialTime,(initialTime?.mainTimeMinutes ?? 30)*60000) }));
+  const [clocks, setClocks] = useState(() => restored?.clocks ?? ({ black: createClock(initialTime,(initialTime?.mainTimeMinutes ?? 30)*60000), white: createClock(initialTime,(initialTime?.mainTimeMinutes ?? 30)*60000) }));
   const clocksRef = useRef(clocks); clocksRef.current = clocks;
-  const lastTick = useRef(Date.now());
+  const lastTick = useRef(restored?.clockAt ?? Date.now());
   const { board, turn, captures, lastMove, phase, winner, ruleset, deadStones, handicapPlacementsLeft: placementsLeft } = game;
   const boardSize = board.length;
   const maxHandicap = handicapType === 'fixed' ? Math.max(1,getHoshiPoints(boardSize).length-1) : 8;
-  const signedKomi = handicapOn ? .5 : komiDirection === 'standard' ? komiValue : komiDirection === 'reverse' ? -komiValue : .5;
-  const scoreDetail = useMemo(() => calculateScores(board, captures, signedKomi >= 0 ? signedKomi : 0, signedKomi < 0 ? -signedKomi : 0, phase === 'play' ? guessDeadStones(board) : deadStones, ruleset, game.sekiPoints, true,
+  const signedKomi = signedCompensation(handicapOn,komiDirection,komiValue);
+  const scoreDetail = useMemo(() => calculateScores(board, captures, signedKomi >= 0 ? signedKomi : 0, signedKomi < 0 ? -signedKomi : 0, phase === 'play' ? new Set<string>() : deadStones, ruleset, game.sekiPoints, true,
     timeSettings?.system === 'ing' ? ((timeSettings.ingPeriods || 0)-clocks.black.ingPeriodsLeft)*2 : 0,
-    timeSettings?.system === 'ing' ? ((timeSettings.ingPeriods || 0)-clocks.white.ingPeriodsLeft)*2 : 0, phase !== 'play'), [game,signedKomi,timeSettings,clocks]);
+    timeSettings?.system === 'ing' ? ((timeSettings.ingPeriods || 0)-clocks.white.ingPeriodsLeft)*2 : 0, (phase === 'scoring' || (phase === 'ended' && game.winReason === 'points'))), [game,signedKomi,timeSettings,clocks]);
   const showNotice = (msg: string) => { setNotice(msg); if(noticeTimer.current) clearTimeout(noticeTimer.current); noticeTimer.current=setTimeout(()=>setNotice(null),2500); };
-  const finish = (win: Player | 'draw', reason: GameState['winReason']) => { updateGame({...gameRef.current,phase:'ended',winner:win,winReason:reason}); setPreviewPoint(null); setAiThinking(false); setShowResults(true); };
+  const finish = (win: Player | 'draw', reason: GameState['winReason']) => { updateGame({...gameRef.current,phase:'ended',winner:win,winReason:reason}); setPreviewPoint(null); setAiThinking(false);setShowTimePanel(false); setShowResults(true); };
   const settleClock = (): boolean => {
     const current = gameRef.current;
     if(!timeSettings || !gameStarted || current.phase !== 'play') return true;
@@ -100,35 +119,76 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
     return true;
   };
   useEffect(()=>{
-    if(!timeSettings || !gameStarted || phase!=='play') return;
+    if(!appActive || !timeSettings || !gameStarted || phase!=='play') return;
     lastTick.current=Date.now(); const t=setInterval(settleClock,100); return ()=>clearInterval(t);
-  },[timeSettings,gameStarted,phase]);
+  },[timeSettings,gameStarted,phase,appActive]);
+  useEffect(()=>{
+    const subscription=AppState.addEventListener('change',next=>{
+      // Settle before changing activity: resumption must charge the entire hidden interval.
+      settleClock();setAppActive(next==='active');
+    });
+    return()=>subscription.remove();
+  },[timeSettings,gameStarted]);
   useEffect(()=>()=> {  if(noticeTimer.current) clearTimeout(noticeTimer.current); if(fadeTimer.current) clearTimeout(fadeTimer.current); },[]);
+  const [sessionSaveFailed,setSessionSaveFailed]=useState(false);
+  const sessionGeneration=useRef(0);
+  const savedRevision=useRef<{revision:string;game:GameState;generation:number}|null>(null);
+  const sessionRef=useRef<LiveSession|null>(null);
+  sessionRef.current={version:1,savedAt:Date.now(),clockAt:lastTick.current,mode,
+    game,root:recordRoot,selected:recordNode,snapshots,aiConfig,timeSettings,gameStarted,clocks,
+    reviewMode,handicapOn,handicapType,handicapCount,komiDirection,komiValue,customKomi,scoringTool};
+  const persistSession=async()=>{
+    const current=sessionRef.current;if(!current)return;
+    const generation=++sessionGeneration.current;
+    try {
+      const savedGame=gameRef.current;
+      const text=encodeSession({...current,game:savedGame,selected:recordRef.current,
+        snapshots:snapshotsRef.current,clocks:clocksRef.current,clockAt:lastTick.current,savedAt:Date.now()});
+      const revision=await saveSession(text);savedRevision.current={revision,game:savedGame,generation};
+      if(generation===sessionGeneration.current)setSessionSaveFailed(false);
+    }catch{setSessionSaveFailed(true);throw new Error('Automatic recovery could not be saved. Your previous saved data has been preserved.');}
+  };
+  useEffect(()=>{if(!exiting)void persistSession().catch(()=>{});},[game,recordRoot,recordNode,snapshots,aiConfig,timeSettings,gameStarted,reviewMode,handicapOn,handicapType,handicapCount,komiDirection,komiValue,customKomi,scoringTool]);
+  useEffect(()=>{
+    const timer=setInterval(()=>{
+      const saved=savedRevision.current;
+      if(!exiting&&appActive&&timeSettings&&gameStarted&&gameRef.current.phase==='play'&&saved?.game===gameRef.current&&saved.generation===sessionGeneration.current)
+        void saveClockCheckpoint(saved.revision,lastTick.current,clocksRef.current).then(
+          ()=>{if(saved.generation===sessionGeneration.current)setSessionSaveFailed(false);},
+          ()=>{if(saved.generation===sessionGeneration.current)setSessionSaveFailed(true);});
+    },1000);
+    const subscription=AppState.addEventListener('change',()=>{if(!exiting)void persistSession().catch(()=>{});});
+    return()=>{clearInterval(timer);subscription.remove();};
+  },[exiting,appActive,timeSettings,gameStarted]);
   const ongoing = phase !== 'ended' && (snapshots.length > 0 || board.some(row=>row.some(Boolean)));
   const ask = (title: string, description: string, confirm: () => void, confirmLabel='Confirm', danger=false) => { setPreviewPoint(null); setDialog({title,description,confirm,confirmLabel,danger}); };
   const handleExit = () => {
-    ask('Exit to Main Menu?', 'Your current game progress will be lost.', () => {
-      setExiting(true);
-      onExit();
+    ask('Exit to Main Menu?', 'Your game will be saved on this device. Use Resume Game to return. Timed games keep counting while you are away.', async () => {
+      settleClock();setExiting(true);
+      try{await persistSession();onExit();}catch{
+        setExiting(false);setDialog({title:'Could Not Save Game',description:'Your latest changes could not be saved. Cancel to stay in the game and export an SGF record of the moves. SGF does not keep live clocks or scoring marks. Leaving now keeps the earlier recovery data.',confirmLabel:'Leave Without Saving',danger:true,confirm:()=>{setExiting(true);onExit();}});
+      }
     }, 'Exit Game', true);
   };
   useEffect(()=> { const s=BackHandler.addEventListener('hardwareBackPress',()=> { if(dialog) setDialog(null); else if(showResults) setShowResults(false); else if(showSidebar) closeSidebar(); else handleExit(); return true; }); return ()=>s.remove(); },[game,dialog,showSidebar,showResults,snapshots]);
-  const moveAllowed = () => gameRef.current.phase === 'play' && (!timeSettings || gameStarted) && (!aiConfig || gameRef.current.turn === aiConfig.userColor);
+  const moveAllowed = () => appActive && gameRef.current.phase === 'play' && (!timeSettings || gameStarted) &&
+    (gameRef.current.handicapPlacementsLeft>0 || !aiConfig || gameRef.current.turn === aiConfig.userColor);
   const setNode = (node: RecordNode) => { recordRef.current=node; setRecordNode(node); updateGame({...node.position, deadStones:new Set(),sekiPoints:new Set()}); setPreviewPoint(null); setPassNotice(null); setSnapshots([]); };
   const commit = (point: Point | null, isAI=false) => {
     if(!isAI && !moveAllowed()) return;
     if(!settleClock()) return;
     const previous=gameRef.current;
     try {
-      let next=point ? playMove(previous,point,handicapType==='fixed' ? getHoshiPoints(boardSize):undefined) : passMove(previous);
+      let next=point ? playMove(previous,point,handicapType==='fixed' ? remainingFixedHandicapPoints(previous):undefined) : passMove(previous);
       const nextNode=appendMove(recordRef.current,previous,next,point);
       if(nextNode.position !== next) next={...nextNode.position};
       const historyEntry={position:previous,node:recordRef.current};
       const history=[...snapshotsRef.current,historyEntry]; snapshotsRef.current=history; setSnapshots(history);
       recordRef.current=nextNode; setRecordNode(nextNode);
       if(next.phase==='scoring') {
-        next={...next,deadStones:guessDeadStones(next.board)};
-        setDialog({title:ruleset==='chinese'?'Chinese Area Scoring':'Japanese Territory Scoring',description:"Toggle any dead stones yourself (your judgment is final), and then select 'Finalize Score' to conclude the game.",confirmLabel:'Start Scoring',confirm:()=>{},noCancel:true});
+        next={...next,deadStones:new Set(),sekiPoints:new Set()};
+        setScoringTool('dead');
+        setDialog({title:ruleset==='chinese'?'Chinese Area Scoring':'Japanese Territory Scoring',description:"Agree which groups are dead before counting. Select Dead and tap a group to remove or restore it. Select Seki for groups that live through mutual dependence. Japanese rules exclude their eye points; Chinese rules count their stones and private eyes. If you disagree or a group is unsettled, resume play. Then review and confirm the result.",confirmLabel:'Start Scoring',confirm:()=>{},noCancel:true});
       }
       if(point) {
         const gone: typeof fading=[];
@@ -148,19 +208,25 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
   };
   const toggleDeadGroup = (p: Point) => {
     const group=findGroup(board,p); if(!group) return;
-    const next=new Set(deadStones), dead=next.has(`${group.group[0].x},${group.group[0].y}`);
-    group.group.forEach(p=>dead?next.delete(`${p.x},${p.y}`):next.add(`${p.x},${p.y}`));
-    updateGame({...game,deadStones:next});
+    if(scoringTool==='seki') {
+      const seki=new Set(game.sekiPoints), selected=seki.has(`${group.group[0].x},${group.group[0].y}`), dead=new Set(deadStones);
+      group.group.forEach(p=>{const key=`${p.x},${p.y}`;selected?seki.delete(key):seki.add(key);dead.delete(key);});
+      updateGame({...game,sekiPoints:seki,deadStones:dead});
+    } else {
+      const next=new Set(deadStones), dead=next.has(`${group.group[0].x},${group.group[0].y}`), seki=new Set(game.sekiPoints);
+      group.group.forEach(p=>{const key=`${p.x},${p.y}`;dead?next.delete(key):next.add(key);seki.delete(key);});
+      updateGame({...game,deadStones:next,sekiPoints:seki});
+    }
   };
   const showIllegalMove=(message:string)=>{
     const ko=message.startsWith('Ko'),fixed=message.startsWith('Fixed handicap');
-    setDialog({title:ko?'Ko — one move elsewhere first':fixed?'Hoshi Violation':'Invalid Move',description:ko?(ruleset==='japanese'?'Ko: you cannot immediately recapture and repeat the previous position. Play elsewhere first — then you may capture back.':'Under Chinese rules no board position may ever repeat (positional superko). Choose a different move — even recapturing later is forbidden if it recreates an earlier position.'):fixed?'In Fixed mode, handicap stones must be placed on hoshi (star points).':message.startsWith('Suicide')?'This move would leave your stone with no breathing space.':message,confirmLabel:'Understood',confirm:()=>{},noCancel:true});
+    setDialog({title:ko?'Ko — one move elsewhere first':fixed?'Handicap Layout':'Invalid Move',description:ko?(ruleset==='japanese'?'Ko: you cannot immediately recapture and repeat the previous position. Play elsewhere first — then you may capture back.':'Under Chinese rules no board position may ever repeat (positional superko). Choose a different move — even recapturing later is forbidden if it recreates an earlier position.'):fixed?'Use one of the highlighted points in the selected fixed layout. The number of handicap stones determines the pattern; any order within that pattern is allowed.':message.startsWith('Suicide')?'This move would leave your stone with no breathing space.':message,confirmLabel:'Understood',confirm:()=>{},noCancel:true});
   };
   const onIntersectionPress = (p: Point) => {
     if(showSidebar || sidebarClosing || dialog) return;
     if(phase==='scoring') { if(board[p.y][p.x]) toggleDeadGroup(p); return; }
     if(!moveAllowed()) return;
-    try { playMove(game,p,handicapType==='fixed'?getHoshiPoints(boardSize):undefined); } catch(error) { if(!board[p.y][p.x]) showIllegalMove((error as Error).message); setPreviewPoint(null); return; }
+    try { playMove(game,p,handicapType==='fixed'?remainingFixedHandicapPoints(game):undefined); } catch(error) { if(!board[p.y][p.x]) showIllegalMove((error as Error).message); setPreviewPoint(null); return; }
     if(previewPoint?.x===p.x && previewPoint?.y===p.y) commit(p); else setPreviewPoint(p);
   };
   const startGame = (size: number, opts?: { hOn?: boolean; hType?: HandicapType; hCount?: number; rSet?: GameState['ruleset']; reset?: boolean }) => {
@@ -186,46 +252,66 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
     const history=snapshotsRef.current;
     if(!history.length) { if(reviewMode && recordNode.parent)setNode(recordNode.parent);return; }
     let index=history.length-1;
-    if(aiConfig && game.turn===aiConfig.userColor && index>0)index--;
+    // Pair a human action with its AI reply, but rewind manual setup one stone at a time.
+    if(aiConfig && game.turn===aiConfig.userColor && index>0&&
+      history[index].position.handicapPlacementsLeft===0)index--;
     const snap=history[index]; updateGame(snap.position); recordRef.current=snap.node; setRecordNode(snap.node);
-    if(snap.position.handicapPlacementsLeft) { const ab:string[]=[];snap.position.board.forEach((r,y)=>r.forEach((c,x)=>{if(c==='black')ab.push(String.fromCharCode(97+x)+String.fromCharCode(97+y));}));snap.node.properties.AB=ab;snap.node.properties.HA=[String(ab.length)];snap.node.position=snap.position; }
+    if(snap.position.handicapPlacementsLeft) {
+      const hadContinuation=snap.node.children.length>0;
+      rewindHandicapSetup(snap.node,snap.position);
+      if(hadContinuation)showNotice('Handicap setup restored; its old continuation was cleared.');
+    }
     const h=history.slice(0,index);snapshotsRef.current=h;setSnapshots(h);setPreviewPoint(null);setPassNotice(null);setAiThinking(false);
   };
   useEffect(()=> {
-    if(!aiConfig || phase!=='play' || turn===aiConfig.userColor || placementsLeft>0 || (timeSettings&&!gameStarted)) {setAiThinking(false);return;}
+    if(!appActive || exiting || !aiConfig || phase!=='play' || turn===aiConfig.userColor || placementsLeft>0 || (timeSettings&&!gameStarted)) {setAiThinking(false);return;}
     let cancelled=false;
     const t=setTimeout(async()=> { if(cancelled)return;setAiThinking(true);await new Promise(r=>setTimeout(r,600));if(cancelled)return; try {
-      const choice=getBestMove(gameRef.current,aiConfig.difficulty,signedKomi);
+      const searchedPosition=gameRef.current;
+      const choice=await getBestMoveAsync(searchedPosition,aiConfig.difficulty,signedKomi,{cancelled:()=>cancelled});
+      if(cancelled || gameRef.current!==searchedPosition)return;
       if(choice==='resign')finish(aiConfig.userColor,'resign');else if(choice==='pass')commit(null,true);else{
         try{playMove(gameRef.current,choice);commit(choice,true);}catch{
           let fallback:Point|null=null;for(let y=0;y<boardSize&&!fallback;y++)for(let x=0;x<boardSize;x++){try{playMove(gameRef.current,{x,y});fallback={x,y};break;}catch{}}
           if(fallback)commit(fallback,true);else throw new Error('No legal alternative');
         }
       }
-    } catch(error) {setDialog({title:'The AI failed to move',description:'Something went wrong while the AI was thinking. No move was played — your game is exactly as you left it.',confirmLabel:'Retry',noCancel:true,confirm:()=>setAiRetry(n=>n+1),children:<View style={{flexDirection:'row',gap:12}}><Pressable onPress={()=>{setDialog(null);undo();}} style={{flex:1,padding:12,borderWidth:1,borderColor:C.white10,borderRadius:12}}><Text style={{color:C.white40,textAlign:'center',textTransform:'uppercase',fontSize:10}}>Undo</Text></Pressable><Pressable onPress={()=>{setDialog(null);finish(aiConfig.userColor==='black'?'white':'black','resign');}} style={{flex:1,padding:12,borderWidth:1,borderColor:'rgba(239,68,68,.20)',borderRadius:12}}><Text style={{color:'#fee2e2',textAlign:'center',textTransform:'uppercase',fontSize:10}}>Resign</Text></Pressable></View>});} finally {setAiThinking(false);} },500);
+    } catch(error) {if(cancelled)return;setDialog({title:'The AI failed to move',description:'Something went wrong while the AI was thinking. No move was played — your game is exactly as you left it.',confirmLabel:'Retry',noCancel:true,confirm:()=>setAiRetry(n=>n+1),children:<View style={{flexDirection:'row',gap:12}}><Pressable onPress={()=>{setDialog(null);undo();}} style={{flex:1,padding:12,borderWidth:1,borderColor:C.white10,borderRadius:12}}><Text style={{color:C.white40,textAlign:'center',textTransform:'uppercase',fontSize:10}}>Undo</Text></Pressable><Pressable onPress={()=>{setDialog(null);finish(aiConfig.userColor==='black'?'white':'black','resign');}} style={{flex:1,padding:12,borderWidth:1,borderColor:'rgba(239,68,68,.20)',borderRadius:12}}><Text style={{color:'#fee2e2',textAlign:'center',textTransform:'uppercase',fontSize:10}}>Resign</Text></Pressable></View>});} finally {if(!cancelled)setAiThinking(false);} },500);
     return ()=>{cancelled=true;clearTimeout(t);};
-  },[game.board,turn,phase,aiConfig,placementsLeft,gameStarted,aiRetry,signedKomi]);
+  },[game.board,turn,phase,aiConfig,placementsLeft,gameStarted,aiRetry,signedKomi,exiting,appActive]);
   const resume = () => {updateGame({...game,phase:'play',consecutivePasses:0,deadStones:new Set(),sekiPoints:new Set()});setPassNotice(null);};
   const finalize = () => {
     const done=()=>finish(scoreDetail.black.total>scoreDetail.white.total?'black':scoreDetail.white.total>scoreDetail.black.total?'white':'draw','points');
-    done();
+    ask('Confirm agreed score?',`Black ${scoreDetail.black.total.toFixed(1)} · White ${scoreDetail.white.total.toFixed(1)}. Confirm only after agreeing dead groups, seki, and all remaining boundaries. Resume play if anything is unsettled.`,done,'Confirm Score');
+  };
+  const currentRecordText = () => {
+    const result=phase==='ended'?(game.winReason==='no-result'?'Void':winner==='draw'?'0':`${winner==='black'?'B':'W'}+${game.winReason==='resign'?'R':game.winReason==='time'?'T':Math.abs(scoreDetail.black.total-scoreDetail.white.total).toFixed(1)}`):undefined;
+    return recordForArchive(recordRoot,recordNode,signedKomi,result,reviewMode);
   };
   const exportSgf = async () => {
     try {
-      recordRoot.properties.KM=[String(signedKomi)];recordRoot.properties.RU=[ruleset==='chinese'?'Chinese':'Japanese'];
-      if(phase==='ended') {const result=game.winReason==='no-result'?'Void':winner==='draw'?'0':`${winner==='black'?'B':'W'}+${game.winReason==='resign'?'R':game.winReason==='time'?'T':Math.abs(scoreDetail.black.total-scoreDetail.white.total).toFixed(1)}`;
-        if(reviewMode)recordNode.properties.C=[...(recordNode.properties.C||[]),`GoLuxe continuation result: ${result}`];else recordRoot.properties.RE=[result];}
-      const text=serializeSgf(recordRoot),name=`goluxe_${boardSize}x${boardSize}_${Date.now()}.sgf`;
+      const text=currentRecordText(),name=`goluxe_${boardSize}x${boardSize}_${Date.now()}.sgf`;
       if(Platform.OS==='web') {const url=URL.createObjectURL(new Blob([text],{type:'application/x-go-sgf'}));const a=document.createElement('a');a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);}
       else {const file=new File(Paths.cache,name);file.create({overwrite:true});file.write(text);if(await Sharing.isAvailableAsync())await Sharing.shareAsync(file.uri,{mimeType:'application/x-go-sgf',UTI:'public.plain-text',dialogTitle:'GoLuxe game record'});else await Share.share({message:text,title:'GoLuxe game record'});}
     } catch(e) {showNotice(`Export failed: ${(e as Error).message}`);}
   };
+  const openRecord = (text:string) => {
+    const parsed=parseSgf(text);setAiConfig(null);setTimeSettings(null);setGameStarted(true);setHandicapOn(false);setShowResults(false);setShowComment(false);
+    setKomiValue(Math.abs(parsed.komi));setKomiDirection(parsed.komi<0?'reverse':parsed.komi===0?'none':'standard');setRecordRoot(parsed.root);setReviewMode(true);setNode(parsed.root);closeSidebar();setDialog(null);showNotice(parsed.playbackWarnings?`Record loaded with ${parsed.playbackWarnings} diagram move${parsed.playbackWarnings===1?'':'s'} outside the selected game rules. SGF playback is preserved; new continuations use normal legality.`:'Record loaded — navigate or play a continuation');
+  };
+  const saveCurrentRecord = async () => {
+    try {
+      if(placementsLeft)throw new Error('Finish placing handicap stones before saving the record.');
+      const text=currentRecordText();
+      await saveRecord(text,`${boardSize}×${boardSize} · ${new Date().toLocaleString()}`);setDialog({title:'Record Saved',description:'Saved on this device. Open Saved Records to review it. Live clocks and scoring annotations are not part of this record.'});
+    }catch(error){setDialog({title:'Could Not Save Record',description:(error as Error).message});}
+  };
+  const showSavedRecords = () => setLibraryVisible(true);
   const importSgf = async () => {
     try {
       const result=await DocumentPicker.getDocumentAsync({type:'*/*',copyToCacheDirectory:true});if(result.canceled || !result.assets?.length)return;
       const asset=result.assets[0];const text=Platform.OS==='web'?await (await fetch(asset.uri)).text():await new File(asset.uri).text();
-      const parsed=parseSgf(text);setAiConfig(null);setTimeSettings(null);setGameStarted(true);setHandicapOn(false);setShowResults(false);setShowComment(false);
-      setKomiValue(Math.abs(parsed.komi));setKomiDirection(parsed.komi<0?'reverse':parsed.komi===.5?'none':'standard');setRecordRoot(parsed.root);setReviewMode(true);setNode(parsed.root);setShowSidebar(false);showNotice('SGF loaded — navigate the record or play a continuation');
+      openRecord(text);
     } catch(e) {setDialog({title:'Could Not Import SGF',description:(e as Error).message});}
   };
   const navigateRecord = (action:'start'|'prev'|'next'|'end') => {let n=recordNode;if(action==='start')n=recordRoot;else if(action==='prev')n=n.parent||n;else if(action==='next')n=n.children[0]||n;else while(n.children.length)n=n.children[0];setNode(n);};
@@ -247,21 +333,21 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
       </View></View>
       <View style={[styles.scoreStrip,{maxWidth:boardPx}]}>
         <Pressable onPress={()=>showScore('black')} style={[styles.scoreSide,{opacity:turn==='black'&&phase==='play'?1:themeMode==='light'?.78:.3}]}><View style={[styles.miniStone,{backgroundColor:'#000',borderColor:'rgba(255,255,255,.20)'}]}/><View><Text style={styles.scoreLabel}>Black</Text><Text style={styles.scoreValue}>{scoreDetail.black.total.toFixed(1)}</Text></View></Pressable>
-        <View style={styles.scoreCenter}>{status!==''&&<Text style={styles.statusText}>{status}</Text>}{timeSettings&&phase==='play'&&<Pressable onPress={showClocks}><Text style={styles.clockText}><Text style={turn==='black'?styles.clockActive:styles.clockIdle}>{clockDisplay(clocks.black,timeSettings)}</Text><Text style={styles.clockSep}> | </Text><Text style={turn==='white'?styles.clockActive:styles.clockIdle}>{clockDisplay(clocks.white,timeSettings)}</Text></Text></Pressable>}{passNotice&&<Text style={styles.passNotice}>{passNotice}</Text>}{phase==='scoring'&&<Pressable accessibilityLabel="Scoring Help" onPress={()=>setDialog({title:ruleset==='chinese'?'Chinese Area Scoring':'Japanese Territory Scoring',description:"Toggle any dead stones yourself (your judgment is final), and then select 'Finalize Score' to conclude the game.",confirmLabel:'Start Scoring',confirm:()=>{},noCancel:true})}><Text style={{color:C.amber100}}>?</Text></Pressable>}</View>
+        <View style={styles.scoreCenter}>{status!==''&&<Text style={styles.statusText}>{status}</Text>}{timeSettings&&phase==='play'&&<Pressable onPress={showClocks}><Text style={styles.clockText}><Text style={turn==='black'?styles.clockActive:styles.clockIdle}>{clockDisplay(clocks.black,timeSettings)}</Text><Text style={styles.clockSep}> | </Text><Text style={turn==='white'?styles.clockActive:styles.clockIdle}>{clockDisplay(clocks.white,timeSettings)}</Text></Text></Pressable>}{passNotice&&<Text style={styles.passNotice}>{passNotice}</Text>}{phase==='scoring'&&<Pressable accessibilityLabel="Scoring Help" onPress={()=>setDialog({title:ruleset==='chinese'?'Chinese Area Scoring':'Japanese Territory Scoring',description:"Agree which groups are dead before counting. Select Dead and tap a group to remove or restore it. Select Seki for groups that live through mutual dependence. Japanese rules exclude their eye points; Chinese rules count their stones and private eyes. If you disagree or a group is unsettled, resume play. Then review and confirm the result.",confirmLabel:'Start Scoring',confirm:()=>{},noCancel:true})}><Text style={{color:C.amber100}}>?</Text></Pressable>}</View>
         <Pressable onPress={()=>showScore('white')} style={[styles.scoreSideRight,{opacity:turn==='white'&&phase==='play'?1:themeMode==='light'?.78:.3}]}><View style={{alignItems:'flex-end'}}><Text style={styles.scoreLabel}>White</Text><Text style={styles.scoreValue}>{scoreDetail.white.total.toFixed(1)}</Text></View><View style={[styles.miniStone,{backgroundColor:'#fff',borderColor:'rgba(0,0,0,.20)'}]}/></Pressable>
       </View>
-      <View style={styles.boardPad}><Board board={board} lastMove={lastMove} previewPoint={previewPoint} onIntersectionPress={onIntersectionPress} turn={turn} boardPx={boardPx} interactive={phase!=='ended'&&!showSidebar&&!sidebarClosing&&!dialog&&(phase==='scoring'||moveAllowed())} showLiberties={showLiberties} showLifeStatus={showLifeStatus} hideAtari={!showAtariWarning} deadStones={deadStones} sekiPoints={game.sekiPoints} isScoringMode={phase==='scoring'} ruleset={ruleset} fading={fading} theme={boardTheme}/></View>
-      <View style={styles.noticeBox}><Text style={styles.noticeText}>{phase==='ended'?`${resultTitle}${game.winReason==='resign'?' by resignation':game.winReason==='time'?' on time':game.winReason==='points'?` · ${scoreDetail.black.total.toFixed(1)} to ${scoreDetail.white.total.toFixed(1)}`:''}`:notice||' '}</Text></View>
+      <View style={styles.boardPad}><Board targets={placementsLeft>0&&handicapType==='fixed'?remainingFixedHandicapPoints(game):[]} showCoordinates={showCoordinates} moveNumbers={visibleMoveNumbers} board={board} lastMove={lastMove} previewPoint={previewPoint} onIntersectionPress={onIntersectionPress} turn={turn} boardPx={boardPx} interactive={phase!=='ended'&&!showSidebar&&!sidebarClosing&&!dialog&&(phase==='scoring'||moveAllowed())} showLiberties={showLiberties} showLifeStatus={showLifeStatus} hideAtari={!showAtariWarning} deadStones={deadStones} sekiPoints={game.sekiPoints} isScoringMode={phase==='scoring'||(phase==='ended'&&game.winReason==='points')} ruleset={ruleset} fading={fading} theme={boardTheme}/></View>
+      {sessionSaveFailed&&<Text accessibilityRole="alert" style={{color:'#fca5a5',textAlign:'center',paddingHorizontal:20}}>Automatic recovery could not be saved. Save an SGF record before leaving.</Text>}<View style={styles.noticeBox}><Text style={styles.noticeText}>{phase==='ended'?`${resultTitle}${game.winReason==='resign'?' by resignation':game.winReason==='time'?' on time':game.winReason==='points'?` · ${scoreDetail.black.total.toFixed(1)} to ${scoreDetail.white.total.toFixed(1)}`:''}`:notice||' '}</Text></View>
       {reviewMode&&<View style={{width:boardPx,borderWidth:1,borderColor:C.white10,borderRadius:12,padding:8,gap:10,backgroundColor:'rgba(255,255,255,.03)'}}><RecordControls node={recordNode} onNode={setNode} onNav={navigateRecord} commentVisible={showComment} onComment={()=>setShowComment(v=>!v)}/>{showComment&&recordNode.properties.C&&<Text style={{color:'rgba(255,255,255,.70)',fontFamily:SERIF,fontSize:16}}>{recordNode.properties.C.join('\n')}</Text>}</View>}
       {timeSettings&&!gameStarted&&phase==='play'?<Pressable onPress={()=>{lastTick.current=Date.now();setGameStarted(true);}} style={styles.startGameBtn}><Text style={styles.startGameText}>Start Game</Text></Pressable>:phase==='play'?<View style={[styles.actionRow,{maxWidth:boardPx}]}>
         {actionBtn('Undo',undo,{disabled:(!snapshots.length&&(!reviewMode||!recordNode.parent))||!!timeSettings||aiThinking})}
-        {actionBtn('Pass',()=>ask('Pass Turn?', 'Both players pass consecutively to enter scoring phase.',()=>commit(null),'Pass'),{disabled:!moveAllowed()||placementsLeft>0||aiThinking||(!reviewMode&&snapshots.length<2)})}
+        {actionBtn('Pass',()=>ask('Pass Turn?', 'Both players pass consecutively to enter scoring phase.',()=>commit(null),'Pass'),{disabled:!moveAllowed()||placementsLeft>0||aiThinking})}
         {actionBtn('Resign',()=>ask('Resign Game?','This will end the game immediately. The opponent wins.',()=>finish(aiConfig?aiConfig.userColor==='black'?'white':'black':turn==='black'?'white':'black','resign'),'Resign',true),{danger:true,disabled:placementsLeft>0})}
         {actionBtn('Refresh',reset)}
-      </View>:phase==='scoring'?<View style={{width:boardPx,gap:8}}><View style={styles.actionRow}>{actionBtn('Resume Play',resume)}</View><Pressable onPress={finalize}  style={styles.finalizeBtn}><Text style={styles.finalizeText}>Finalize Score</Text></Pressable></View>:<View style={[styles.actionRow,{maxWidth:boardPx}]}>{actionBtn('Play Again',()=>startGame(boardSize,{reset:true}))}</View>}
+      </View>:phase==='scoring'?<View style={{width:boardPx,gap:8}}><Text style={{color:'rgba(255,255,255,.60)',fontSize:12,textAlign:'center'}}>Agreed count · Tap groups to mark {scoringTool==='dead'?'dead':'seki'}</Text><View style={styles.actionRow}>{actionBtn('Dead',()=>setScoringTool('dead'),{disabled:scoringTool==='dead'})}{actionBtn('Seki',()=>setScoringTool('seki'),{disabled:scoringTool==='seki'})}</View><View style={styles.actionRow}>{actionBtn('Resume Play',resume)}</View><Pressable onPress={finalize}  style={styles.finalizeBtn}><Text style={styles.finalizeText}>Finalize Score</Text></Pressable></View>:<View style={[styles.actionRow,{maxWidth:boardPx}]}>{actionBtn('Play Again',()=>startGame(boardSize,{reset:true}))}</View>}
     </ScrollView>
     </SafeAreaView>
-    <Sidebar visible={showSidebar} onClose={closeSidebar} onExitToMenu={handleExit} showLiberties={showLiberties} setShowLiberties={setShowLiberties} showAtariWarning={showAtariWarning} setShowAtariWarning={setShowAtariWarning} showLifeStatus={showLifeStatus} setShowLifeStatus={setShowLifeStatus} ruleset={ruleset} onRuleset={changeRules} handicapOn={handicapOn} onToggleHandicap={()=>{startGame(boardSize,{hOn:!handicapOn});}} handicapType={handicapType} onHandicapType={t=>{setHandicapType(t);startGame(boardSize,{hType:t});}} handicapCount={handicapCount} onHandicapCount={n=>{setHandicapCount(n);startGame(boardSize,{hCount:n});}} maxHandicap={maxHandicap} komiDirection={komiDirection} setKomiDirection={setKomiDirection} customKomi={customKomi} setCustomKomi={setCustomKomi} komiValue={komiValue} setKomiValue={setKomiValue} boardTheme={boardTheme} setBoardTheme={setBoardTheme} onExportSgf={exportSgf} onImportSgf={importSgf}/>
+    <Sidebar onSaveRecord={saveCurrentRecord} onSavedRecords={showSavedRecords} showCoordinates={showCoordinates} setShowCoordinates={setShowCoordinates} showMoveNumbers={showMoveNumbers} setShowMoveNumbers={setShowMoveNumbers} visible={showSidebar} onClose={closeSidebar} onExitToMenu={handleExit} showLiberties={showLiberties} setShowLiberties={setShowLiberties} showAtariWarning={showAtariWarning} setShowAtariWarning={setShowAtariWarning} showLifeStatus={showLifeStatus} setShowLifeStatus={setShowLifeStatus} ruleset={ruleset} onRuleset={changeRules} handicapOn={handicapOn} onToggleHandicap={()=>{startGame(boardSize,{hOn:!handicapOn});}} handicapType={handicapType} onHandicapType={t=>{setHandicapType(t);startGame(boardSize,{hType:t});}} handicapCount={handicapCount} onHandicapCount={n=>{setHandicapCount(n);startGame(boardSize,{hCount:n});}} maxHandicap={maxHandicap} komiDirection={komiDirection} setKomiDirection={setKomiDirection} customKomi={customKomi} setCustomKomi={setCustomKomi} komiValue={komiValue} setKomiValue={setKomiValue} boardTheme={boardTheme} setBoardTheme={setBoardTheme} onExportSgf={exportSgf} onImportSgf={importSgf}/>
     {/* Root sibling of the sidebar: a child zIndex cannot escape SafeAreaView. */}
     <Pressable disabled={exiting} accessibilityRole="button" accessibilityLabel={showSidebar?'Close settings':'Open settings'}
       accessibilityState={{expanded:showSidebar,disabled:exiting}}
@@ -269,9 +355,13 @@ export default function GameScreen({ mode, aiConfig: initialAI, timeSettings: in
       style={[styles.gearBtn,{position:'absolute',top:insets.top+6,left:insets.left+8}]}>
       <GearIcon open={showSidebar} color={showSidebar?'#ffffff':themeMode==='light'?'#1c1917':'#ffffff'}/>
     </Pressable>
-    <Dialog dialog={dialog} onClose={()=>setDialog(null)}/>
+    {preferencesSaveFailed&&<Text accessibilityLiveRegion="polite" style={{color:C.amber100,textAlign:'center',fontSize:12}}>Display changes could not be saved on this device.</Text>}
+    <SavedRecordLibrary visible={libraryVisible} onClose={()=>setLibraryVisible(false)} onOpen={record=>{
+        setLibraryVisible(false);ask('Open saved record?','This replaces the current board. Save its record first if you want to keep it.',()=>{try{openRecord(record.sgf);}catch(error){setDialog({title:'Could Not Open Record',description:(error as Error).message});}},'Open Record');
+      }}/>
+      <Dialog dialog={dialog} onClose={()=>setDialog(null)}/>
     {timeSettings&&<TimerPanel visible={showTimePanel} clocks={clocks} settings={timeSettings} active={turn} phase={phase} onClose={()=>setShowTimePanel(false)}/>}
-    <ScoreModal scores={scoreDetail} ruleset={ruleset} player={scorePlayer} results={showResults} winner={winner} reason={game.winReason} onClose={()=>{setShowResults(false);setScorePlayer(null);}} onNewGame={()=>{setScorePlayer(null);startGame(boardSize,{reset:true});}}/>
+    <ScoreModal phase={phase} scores={scoreDetail} ruleset={ruleset} player={scorePlayer} results={showResults} winner={winner} reason={game.winReason} onClose={()=>{setShowResults(false);setScorePlayer(null);}} onNewGame={()=>{setScorePlayer(null);startGame(boardSize,{reset:true});}}/>
   </View>;
 }
 

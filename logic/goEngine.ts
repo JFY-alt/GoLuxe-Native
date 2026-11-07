@@ -453,6 +453,7 @@ export const getDetailedTerritoryMap = (board: Intersection[][], sekiPoints: Set
         const stack: Point[] = [{ x, y }];
         const borderingColors = new Set<Player>();
         const regionVisited = new Set<string>();
+        let bordersSeki = false;
 
         while (stack.length > 0) {
           const curr = stack.pop()!;
@@ -469,13 +470,14 @@ export const getDetailedTerritoryMap = (board: Intersection[][], sekiPoints: Set
               stack.push(n);
             } else {
               borderingColors.add(occupant);
+              if (sekiPoints.has(`${n.x},${n.y}`)) bordersSeki = true;
             }
           }
         }
 
         region.forEach(p => visited.add(`${p.x},${p.y}`));
 
-        if (borderingColors.size === 1) {
+        if (borderingColors.size === 1 && !bordersSeki) {
           const owner = borderingColors.values().next().value;
           region.forEach(p => {
             const rKey = `${p.x},${p.y}`;
@@ -597,7 +599,7 @@ export const calculateScores = (
   }
 
   const territory = includeTerritory
-    ? calculateTerritory(virtualBoard, sekiPoints)
+    ? calculateTerritory(virtualBoard, ruleset === 'japanese' ? sekiPoints : new Set())
     : { black: 0, white: 0 };
 
   const finalCapturesBlack = ruleset === 'japanese'

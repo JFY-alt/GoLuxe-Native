@@ -1,3 +1,4 @@
+import type {ViewInstance} from 'react-native';
 import React, {useCallback, useEffect, useRef} from 'react';
 import {AppState, StyleSheet, View} from 'react-native';
 import {BlurView, BlurTargetView} from 'expo-blur';
@@ -12,7 +13,7 @@ type Props={source:VideoSource;skipOpening:boolean;active:boolean;onMenuReady:()
 export default function HomeCinema({source,skipOpening,active,onMenuReady}:Props){
  const activeRef=useRef(active);activeRef.current=active;
  const resumeTime=useRef(skipOpening?Math.max(timing.repeatFromSeconds,homePlaybackTime):0);
- const target=useRef<View|null>(null),ready=useRef(false),revealed=useRef(false),failed=useRef(false);
+ const target=useRef<ViewInstance|null>(null),ready=useRef(false),revealed=useRef(false),failed=useRef(false);
  const callback=useRef(onMenuReady);callback.current=onMenuReady;
  const menuTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
  const videoOpacity=useSharedValue(0);

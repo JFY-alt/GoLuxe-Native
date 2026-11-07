@@ -1,3 +1,8 @@
+import {NET_LESSON} from './netLesson';
+import {LADDER_LESSON} from './ladderLesson';
+import {PRACTICE_LESSON} from './practiceLessons';
+import {ENDGAME_LESSON} from './endgameLesson';
+import {PROBING_BEATS} from './probingBeats';
 /**
  * Sensei lesson data for the Study Room.
  * Each topic is an interactive tutorial taught by Iwao, in the same style
@@ -5,7 +10,7 @@
  *
  * Board format: 9 strings of 9 chars. X = black, O = white, . = empty.
  * Text markup: **bold** renders amber, *italic* renders italic.
- * Every interactive tap is played by Black (the student always plays Black).
+ * Interactive taps default to Black; practice beats may specify White.
  */
 
 export type SenseiMood = 'happy' | 'excited' | 'sad' | 'proud';
@@ -18,6 +23,10 @@ export interface SenseiChoice {
 }
 
 export interface SenseiBeat {
+  /** Independent problems hide targets and retain the solved position for explanation. */
+  unmarked?: boolean;
+  studentColor?: 'black' | 'white';
+  feedback?: string;
   title: string;
   mood: SenseiMood;
   text: string;
@@ -71,6 +80,7 @@ const EMPTY = [
 ];
 
 export const SENSEI_LESSONS: SenseiLesson[] = [
+  PRACTICE_LESSON,
   // ================================================================
   // 1. 9x9 FUNDAMENTALS
   // ================================================================
@@ -115,7 +125,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
         text: 'One liberty left is **atari** — the red marker means danger. **Tap the red marker** to capture.',
       },
       {
-        title: 'Captured', mood: 'excited', button: 'The ladder',
+        title: 'Captured', mood: 'excited', button: 'The edge chase',
         board: [
           '.........',
           '.........',
@@ -130,7 +140,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
         text: 'Clean. But atari is a *threat*, not a capture — always ask: *if I play atari, can they escape?* Thoughtless atari often helps the enemy connect.',
       },
       {
-        title: 'The Ladder', mood: 'happy', button: 'Start the chase',
+        title: 'The Edge Chase', mood: 'happy', button: 'Start the chase',
         board: [
           '.........',
           '.XOX.....',
@@ -142,7 +152,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        text: 'A **ladder** is a running chase. White has two liberties — and Black is about to take one away. Watch how the chase works.',
+        text: 'This **edge atari chase** introduces reading a sequence. White has two liberties. Count them after every move. The separate Ladders & Reading topic traces a full diagonal ladder and a supporting stone that changes it.',
       },
       {
         title: 'Start the chase', mood: 'excited',
@@ -159,7 +169,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
         ],
         taps: [{ x: 2, y: 2 }],
         nudge: 'Tap the glowing point — the atari.',
-        text: '**Tap the glowing point** to put White in atari. One liberty left — White *must* run.',
+        text: '**Tap the glowing point** to put White in atari. One liberty left — White can extend to try to save the chain, or sacrifice it.',
       },
       {
         title: 'Atari!', mood: 'happy', button: 'White runs',
@@ -174,7 +184,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        text: 'Black gives atari. White has one move.',
+        text: 'Black gives atari. White has one remaining liberty; we will examine extending there.',
       },
       {
         title: 'White runs', mood: 'happy', button: 'Keep chasing',
@@ -189,7 +199,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        text: 'White runs along the edge! But count White\'s liberties — still only two. The ladder holds. **Keep chasing.**',
+        text: 'White runs along the edge! But count White\'s liberties — still only two. The edge chase continues. **Keep chasing.**',
       },
       {
         title: 'Keep chasing', mood: 'excited',
@@ -221,7 +231,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        text: 'Black gives atari again. White must keep running.',
+        text: 'Black gives atari again. White can keep running or choose to sacrifice the chain.',
       },
       {
         title: 'No escape', mood: 'happy', button: 'Finish it',
@@ -252,11 +262,11 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
         ],
         taps: [{ x: 4, y: 0 }],
-        nudge: 'Tap the glowing point to finish the ladder.',
+        nudge: 'Tap the glowing point to finish the chase.',
         text: '**Tap the glowing point.** Two ataris, two escapes — now finish the chase.',
       },
       {
-        title: 'Three stones gone', mood: 'proud', button: 'The broken ladder',
+        title: 'Three stones gone', mood: 'proud', button: 'Change the surrounding stones',
         board: [
           '.X..X....',
           '.X.X.....',
@@ -268,10 +278,10 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        text: '**Three stones, captured.** That\'s a ladder: a running chase to the edge, finished with one tap. But it only works if the wall holds…',
+        text: '**Three White stones captured.** This short edge chase works on this board. Change the surrounding stones and you must read again; recognizing the outline is not enough.',
       },
       {
-        title: 'A working ladder', mood: 'happy', button: 'Spot the gap',
+        title: 'A Working Edge Chase', mood: 'happy', button: 'Spot the gap',
         board: [
           '.XO......',
           '.XOX.....',
@@ -283,7 +293,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        text: 'Two rungs in. White\'s in atari, running along the edge, and Black\'s wall is **solid** — every stone in place. **This ladder works.** Now watch what one missing stone does.',
+        text: 'White is in atari. The nearby Black stones block the demonstrated escape route. Compare this board with the next one, where a missing Black stone changes White’s options.',
       },
       {
         title: 'One stone missing', mood: 'happy', button: 'Chase anyway',
@@ -345,7 +355,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        text: 'White doesn\'t run — White **turns and walks straight through the gap.** No atari, room to breathe, and the chase is dead. **A ladder is only as strong as its wall.** This is why you read it to the edge *before* you start.',
+        text: 'White extends through the gap and gains more liberties. The immediate atari chase has stopped. That does not prove White alive; it means Black must read a different continuation.',
       },
       {
         title: 'The Net', mood: 'happy', button: 'Weave the net',
@@ -360,7 +370,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        text: 'Forget the chase. This is a **net**. White has four liberties — but look where they are. Every one is *inside* Black\'s loose box. White can\'t get out. **Weave it tighter.**',
+        text: 'Black’s stones form a **loose enclosure** around White. White has four liberties here. Before calling the chain trapped, read its extensions, countercaptures, and possible connections to support. We will examine one continuation; the Nets & Escape Routes topic reads the resulting position more deeply.',
       },
       {
         title: 'Block the top', mood: 'excited',
@@ -377,7 +387,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
         ],
         taps: [{ x: 3, y: 4 }],
         nudge: 'Tap the glowing point — block the northern escape.',
-        text: 'White tries to push out the top. **Tap the glowing point** to block it — loosely, from a distance. No atari needed.',
+        text: '**Tap the marked point** to close the northern gap. This move touches White directly; it is not a distant surrounding move. White will still have three liberties, so Black has not given atari.',
       },
       {
         title: 'Blocked!', mood: 'happy', button: 'White pushes south',
@@ -392,7 +402,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        text: 'The north is blocked. White must try another way.',
+        text: 'The northern gap is closed. White can choose another extension, play a supporting move elsewhere, or sacrifice the stone. Next we illustrate a southern extension.',
       },
       {
         title: 'White pushes south', mood: 'happy', button: 'Close the net',
@@ -407,7 +417,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        text: 'White pushes south instead. Fine — the net has another door. **Close it.**',
+        text: 'White extends south between Black’s lower stones. This is one possible reply. Black must read the remaining liberties and nearby support before choosing a block.',
       },
       {
         title: 'Close the net', mood: 'excited',
@@ -424,7 +434,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
         ],
         taps: [{ x: 3, y: 7 }],
         nudge: 'Tap the glowing point — shut the southern door.',
-        text: '**Tap the glowing point.** One loose move, and the net is shut.',
+        text: '**Tap the marked point** to block the southern liberty. White’s two-stone chain will still have two liberties, in the left and right gaps.',
       },
       {
         title: 'Trapped', mood: 'proud', button: 'Start the race',
@@ -439,7 +449,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '...X.....',
           '.........',
         ],
-        text: '**Trapped.** White still has liberties — but every one is *inside* the net. No ataris, no chase, no reading to the edge. A net catches what a ladder can\'t: *anything* inside it. And unlike a ladder, a net is woven, not balanced — it takes more than one slip to break it, though a gap in the wrong place can still let the target escape.',
+        text: 'White’s chain has **two liberties**, left and right. Black can capture with correct replies in this position, but that conclusion requires reading. The Nets & Escape Routes topic follows both doors and shows why an outside supporting stone changes Black’s reply. A net can fail through a single important gap or a countercapture.',
       },
       {
         title: 'Outside First', mood: 'happy', button: 'Take the outside',
@@ -486,7 +496,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        text: 'White: five liberties. You: six. **That\'s the technique.** The shared point fills *your* liberty too — take it last. **Outside first, always.**',
+        text: 'White: five liberties. You: six. **That\'s the technique.** The shared point fills *your* liberty too — take it last. **Outside liberties first is a useful starting point. Eyes, shared liberties, and approach moves can change the race — count before choosing.**',
       },
       {
         title: 'Two Eyes Live', mood: 'happy', button: 'White attacks',
@@ -595,7 +605,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        text: '**Fourteen stones, gone.** One eye dies — Black fills it and the whole wall collapses. **Two eyes live, one eye dies.**',
+        text: '**Fourteen stones, gone.** Here the completely surrounded White chain had just one liberty, inside its eye. Black fills it and captures. One eye alone does not prove a group dead: it may escape, make another eye, or live in seki.',
       },
       {
         title: 'Double Atari', mood: 'excited',
@@ -612,7 +622,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
         ],
         taps: [{ x: 4, y: 4 }],
         nudge: 'Tap the glowing point.',
-        text: 'One move, **two ataris at once**. Both White stones have one liberty. White can only save one. **Tap the glowing point.**',
+        text: 'Each White stone currently has **two liberties**. Play between them to take one liberty from each, creating **two ataris at once**. In this local position White cannot save both in one move. **Tap the glowing point.**',
       },
       {
         title: 'Both in Atari', mood: 'proud', button: 'Fundamentals complete',
@@ -627,7 +637,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        text: 'Both White stones in atari. White saves one — Black takes the other. **Double atari** always wins material. Look for it.',
+        text: 'Both White stones in atari. White saves one — Black takes the other. **Double atari** threatens two targets. It can win stones, but check captures, connections, ko, and whether the opponent can sacrifice them profitably.',
       },
       {
         title: 'Fundamentals Complete', mood: 'proud', button: 'Return to Study Room',
@@ -645,7 +655,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
     beats: [
       {
         title: 'Iwao', mood: 'happy', board: EMPTY, button: 'Begin',
-        text: 'You know tactics — ladders, nets, eyes. But why do some groups live easily while others die no matter what? The answer is **shape**. Good shape defends itself. Bad shape begs to be killed.',
+        text: '**Shape** describes how efficiently stones work together. Good shape often helps connection, liberties and eye formation. It is a guide to reading, not a rule that decides life or death on its own.',
       },
       {
         title: 'The Empty Triangle', mood: 'sad',
@@ -661,7 +671,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
         ],
         button: 'Why is it bad?',
-        text: 'This is the **empty triangle** — three stones forming a triangle with a hole in the middle. It *looks* solid. It is the **worst shape** in Go.',
+        text: 'This is an **empty triangle**: three stones occupy three corners of a small square while the fourth corner is empty. The stones overlap in the liberties they cover, so the shape is often inefficient. It can still be the right move when the position demands it.',
       },
       {
         title: 'Wasted Stone', mood: 'sad',
@@ -678,7 +688,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
         ],
         marks: [ { x: 4, y: 4 } ],
         button: 'The bamboo joint',
-        text: 'Three stones, but the marked point shows the waste — one stone fills its own liberties. **Never make an empty triangle** unless you have no choice.',
+        text: 'These three connected stones have **seven liberties**. Three stones in a straight line in the open center have eight. That helps explain the empty triangle’s usual inefficiency, but an extra liberty is not the only goal: capture, connection and life can justify this shape.',
       },
       {
         title: 'The Bamboo Joint', mood: 'happy',
@@ -694,23 +704,14 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
         ],
         button: 'Why it works',
-        text: 'The **bamboo joint** — two pairs, two spaces apart. See how clean it is? No gaps, no waste.',
+        text: 'The **bamboo joint** has two parallel two-stone chains with two connecting points between them. If the opponent plays at one connecting point, you can usually join at the other. Check nearby ataris and liberty shortages before relying on this connection.',
       },
       {
-        title: 'Uncuttable', mood: 'happy',
-        board: [
-          '.........',
-          '.........',
-          '.........',
-          '.........',
-          '...X.X...',
-          '...XOX...',
-          '.........',
-          '.........',
-          '.........',
-        ],
-        button: 'The ponnuki',
-        text: 'White tries to cut between — and **fails**. The bamboo joint cannot be cut. Two stones, zero weaknesses. When in doubt, make this shape.',
+        title: 'Answer the cut', mood: 'happy', unmarked: true, studentColor: 'black',
+        board: ['.........','.........','.........','.........','...X.X...','...XOX...','.........','.........','.........'],
+        choices: [{x:4,y:4,correct:true},{x:6,y:6,correct:false,nudge:'That move leaves the Black chains separate. Connect at the other point between the pairs.'}],
+        text: 'White has played at one connecting point. Black to play: join the two Black chains through the other point.',
+        feedback: 'Black connects all five stones through the upper point. White has not cut the chains apart. This demonstrates the bamboo joint’s connection in this position; outside threats can change what is safe.',
       },
       {
         title: 'The Ponnuki', mood: 'happy',
@@ -726,7 +727,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
         ],
         button: 'A diamond',
-        text: 'Capture a stone and you get the **ponnuki** — a diamond. Four stones, incredibly solid. The old saying: *"A ponnuki is worth 30 points."* It radiates power in every direction.',
+        text: 'A **ponnuki** is the four-stone diamond left by capturing a single stone. The proverb *"a ponnuki is worth 30 points"* praises its influence; it is not a literal score. Its actual value depends on the surrounding position. These four stones are still four separate chains.',
       },
       {
         title: 'The Dumpling', mood: 'sad',
@@ -742,11 +743,11 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
         ],
         button: 'No eyes',
-        text: 'The **dumpling** — a solid lump. Looks strong, but it has **no eyes** and no room to make them. It is a dead shape walking. Spread out — give your groups room to breathe.',
+        text: 'A **dumpling** is a clump of stones that often uses moves inefficiently. This group has **ten liberties** and room outside it; it is not dead just because it has no eye yet. Seek efficient connections and space, while reading the actual threats.',
       },
       {
         title: 'Shape Complete', mood: 'proud', button: 'Return to Study Room',
-        text: '**Shape: bamboo joints are uncuttable, ponnuki is gold, empty triangles and dumplings are death.** Before every move, ask: *does this make good shape?* **Return to the Study Room.**',
+        text: 'Compare liberties, connection and useful space. Bamboo joints often connect efficiently; a ponnuki can give influence; empty triangles and clumps can be inefficient. None of these labels replaces reading the position. **Return to the Study Room.**',
       },
     ],
   },
@@ -776,7 +777,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
         ],
         button: 'Step 2',
-        text: '**Is anything in atari?** Yours or theirs. Atari is urgent — it must be answered now or the stone dies. Always check this first. Here, White is in atari.',
+        text: '**Is anything in atari?** Check your stones and theirs. If a chain has one liberty, the opponent threatens to capture it. Decide whether to save, counterattack or sacrifice; not every atari deserves an answer. Here, White is in atari.',
       },
       {
         title: 'Step 2: Capture?', mood: 'happy',
@@ -861,11 +862,11 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
     beats: [
       {
         title: 'Iwao', mood: 'happy', board: EMPTY, button: 'Begin',
-        text: 'On 19×19, the opening is a slow dance — corners, then sides, then center. On **9×9, there is no opening phase**. The board is small. Fighting starts on move one. This lesson is about how 9×9 really plays.',
+        text: 'On **9×9**, the opening is short and opposing stones meet quickly. Territory, connection and tactics matter from the start. Opening plans still exist; they must fit the smaller board.',
       },
       {
         title: 'No Time to Waste', mood: 'happy', board: EMPTY, button: 'Corners first',
-        text: 'Nine lines each way. Your stones are **always** close to the enemy. There\'s no safe corner to hide in while you build — every move is a fighting move. **Think tactics, not territory.**',
+        text: 'Nine lines each way. A move can influence much of the board, so local fighting and whole-board territory are closely connected. Check immediate threats while considering how your stones will secure points.',
       },
       {
         title: 'Corners First', mood: 'happy',
@@ -881,7 +882,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
         ],
         button: 'Why corners?',
-        text: 'Still play the **corners first**. Not because of 19×19 proverbs — because on 9×9, a corner stone is already *almost alive*. The edges do half your defending for you.',
+        text: 'Corners are efficient starting places because two board edges help bound space. That is **not a guarantee of life**: a single corner stone still needs support and must respond to actual threats.',
       },
       {
         title: 'Why Corners?', mood: 'happy',
@@ -901,17 +902,17 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           { x: 1, y: 2 }, { x: 1, y: 3 },
         ],
         button: 'The 3-3 point',
-        text: 'A stone on the **3-3 point** needs only a few more moves to make two eyes. The marks show its future territory. On 9×9, the corner is not a *promise* — it\'s nearly a *fact*.',
+        text: 'The marks illustrate **possible space**, not territory already owned. Both players can contest it. Read the replies before claiming two eyes or counting secure points.',
       },
       {
         title: 'The 3-3 Point', mood: 'happy',
         board: EMPTY,
         marks: [{ x: 2, y: 2 }],
         button: 'Don\'t hug the edge',
-        text: 'The **3-3 point** — three lines from each edge (marked). On 9×9, this is the strongest first move in the corner. It takes the corner *and* aims at life.',
+        text: 'The **3-3 point** is three lines from each edge. It is one useful corner choice emphasizing local territory. It is not a universally strongest first move, and one stone does not secure the corner.',
       },
       {
-        title: 'Don\'t Hug the Edge', mood: 'happy',
+        title: 'The Center Choice', mood: 'happy',
         board: [
           '.........',
           '.........',
@@ -924,7 +925,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
         ],
         button: 'The second line',
-        text: 'The **center** (tengen) looks tempting. But on 9×9, a center stone has no friends — the edges are far, and enemies come from everywhere. Play the corners and sides first.',
+        text: 'The **center point**, tengen, emphasizes influence and contact with several parts of this small board. It is a viable opening choice with different trade-offs from a corner. Ask how your next moves will support it.',
       },
       {
         title: 'The Second Line', mood: 'happy',
@@ -940,7 +941,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
         ],
         button: 'Keep stones working',
-        text: 'The **1st and 2nd lines** are too low early. Stones here make almost no territory and can\'t fight well. Stay on the **3rd and 4th lines** until the position settles.',
+        text: 'An isolated low opening move often develops less space. But first- and second-line moves can be correct early when they capture, connect, or secure life. Compare their concrete purpose with larger opportunities.',
       },
       {
         title: 'Keep Stones Working', mood: 'happy',
@@ -956,7 +957,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
         ],
         button: 'Answer contact',
-        text: 'Two stones **side by side** on the second move? That\'s over-concentrated — they do one stone\'s job. On 9×9, every stone must earn its place. **Spread out.** Take the big points before adding helpers.',
+        text: 'These adjacent stones form a solid connection. Without a threat, spreading out may develop more space; under pressure, direct support may be valuable. **Efficiency depends on the position**, not distance alone.',
       },
       {
         title: 'Answer Contact', mood: 'excited',
@@ -973,7 +974,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
         ],
         taps: [{ x: 3, y: 1 }],
         nudge: 'Tap the glowing point — answer the contact.',
-        text: 'White has **touched** your stone (tsuke). On 19×19 you might tenuki — play elsewhere. On 9×9, **answer contact**. The board is too small to ignore a fight. **Tap the glowing point** to extend.',
+        text: 'White has attached to Black. Examine the threatened follow-up before deciding whether to answer or play elsewhere. **Tap to extend** and compare liberties; this is one candidate reply, not a forced universal rule.',
       },
       {
         title: 'Well Answered', mood: 'happy', button: 'Opening Complete',
@@ -988,11 +989,11 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        text: 'You extended. White\'s contact is answered — your stone has room, White is cramped. On 9×9, **never ignore contact**.',
+        text: 'Black’s extension increases its chain from **three to five liberties**. White still has **three liberties**. The move strengthens Black locally; it does not by itself prove White cramped or the exchange best.',
       },
       {
         title: 'Opening Complete', mood: 'proud', button: 'Return to Study Room',
-        text: '9×9 opening: **corners first, 3-3 is strong, stay off the 1st line, don\'t over-concentrate, answer contact.** There is no joseki to memorize — just fight well from move one. **Return to the Study Room** for 13×13 Opening.',
+        text: 'Consider **corner efficiency, support, liberties, and threat value**. On 9×9, nearby fights connect quickly, but every contact need not be answered. Read candidate replies and compare them with playing elsewhere.',
       },
     ],
   },
@@ -1116,7 +1117,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
         text: 'Opponent took the 4-4? You can **invade at 3-3**. On 13x13, the board is small enough that invasions are serious — there is nowhere to run.',
       },
       {
-        title: 'The 3-3 Invasion', mood: 'excited',
+        title: 'The 3-3 Invasion', mood: 'excited', studentColor: 'white',
         board: [
           '.............',
           '.............',
@@ -1134,10 +1135,10 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
         ],
         taps: [{ x: 2, y: 2 }],
         nudge: 'Tap the 3-3 point to invade.',
-        text: '**Tap the 3-3 point.** Deep in the corner, under the 4-4 stone. Black cannot ignore this.',
+        text: '**White to play: tap the 3-3 point.** This starts a corner invasion under Black’s 4-4 stone. It does not make White alive immediately; both sides must read the continuation.',
       },
       {
-        title: 'Live Inside', mood: 'happy', button: 'Approaching 4-4',
+        title: 'Invasion Started', mood: 'happy', button: 'Approaching 4-4',
         board: [
           '.............',
           '.............',
@@ -1153,7 +1154,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.............',
           '.............',
         ],
-        text: 'White lives small in the corner. Black gets the outside wall. On 13x13, this trade favors **White** — the corner is big relative to the board.',
+        text: 'White has started the invasion. This diagram does **not** yet show a living group or an outside wall. Later moves can give White corner territory and Black outside influence; who benefits depends on the continuation and the rest of the board.',
       },
       {
         title: 'Approaching 4-4', mood: 'happy', button: 'Opening Complete',
@@ -1336,7 +1337,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
         text: 'Or **pincer** — attack from the far side. White came to your corner; now squeeze. **Tap the glowing point.**',
       },
       {
-        title: 'Joseki', mood: 'happy', button: 'Opening Complete',
+        title: 'One Possible Reply', mood: 'happy', button: 'Opening Complete',
         board: [
           '...................',
           '...................',
@@ -1358,7 +1359,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '...................',
           '...................',
         ],
-        text: 'Pincer, White jumps toward center, Black holds the corner. **Result:** Black has the corner, White has center influence. Neither is ahead — that\'s **joseki**: a fair, settled exchange.',
+        text: 'The next diagram includes White’s two-space jump toward the center after the pincer. This is an illustrative continuation, not proof that Black owns the corner or that the exchange is even. **Joseki** are studied local sequences; their suitability depends on the whole board.',
       },
       {
         title: 'Tenuki', mood: 'happy', button: 'When to ignore',
@@ -1457,23 +1458,13 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
       },
       {
         title: 'Saving Dead Stones', mood: 'sad',
-        board: [
-          '.........',
-          '.........',
-          '.........',
-          '.........',
-          '.OOO.....',
-          '.OX......',
-          '.OOO.....',
-          '.........',
-          '.........',
-        ],
+        board: ['.........', '.........', '..OOOOO..', '..OXXXO..', '..OX.XO..', '..OXXXO..', '..OOOOO..', '.........', '.........'],
         button: 'Let it go',
-        text: 'This Black stone is **dead** — surrounded, one eye, no escape. Beginners keep playing here, throwing good stones after bad.',
+        text: 'These eight Black stones are completely surrounded. Their **only liberty** is the central eye. Black cannot fill it without self-capture; White can fill it and capture all eight. Here, there is no escape or second eye.',
       },
       {
         title: 'Let It Go', mood: 'happy', board: EMPTY, button: 'The empty peep',
-        text: '**Let dead stones die.** Every stone you spend saving them is a stone not spent somewhere useful. Play elsewhere — the big points are waiting.',
+        text: 'First **read the actual options**: escape, connection, capture, another eye, or seki. One eye alone does not prove death. Once a group truly cannot be saved, compare sacrifices and threats with playing elsewhere.',
       },
       {
         title: 'The Empty Peep', mood: 'sad',
@@ -1482,31 +1473,31 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
           '.........',
-          '...X.X...',
+          '...O.O...',
           '.........',
           '.........',
           '.........',
           '.........',
         ],
-        taps: [{ x: 4, y: 4 }],
-        nudge: 'Tap to peep (do not do this in a real game).',
-        text: 'The **peep** — threatening to cut. But White just connects and now your stone is *useless*. **Tap to peep** and see.',
+        taps: [{ x: 4, y: 5 }],
+        nudge: 'Tap below the gap to play Black’s peep.',
+        text: 'A **peep** pressures a connection. White has a one-point gap. Black plays just below it, aiming at the cutting point. **Tap to peep**, then examine one possible White reply.',
       },
       {
-        title: 'Helped Them', mood: 'sad',
+        title: 'White Connects', mood: 'sad',
         board: [
           '.........',
           '.........',
           '.........',
           '.........',
-          '...XXX...',
-          '.........',
+          '...OOO...',
+          '....X....',
           '.........',
           '.........',
           '.........',
         ],
         button: 'First line fever',
-        text: 'White connected. Your peep **helped White** get solid — for free. Only peep when it *forces* something useful. Random peeps are gifts to the enemy.',
+        text: 'White has answered by connecting in the gap. White’s connected chain has **seven liberties**; Black’s peeping stone has **three**. Was the exchange useful? That depends on Black’s follow-up and the surrounding position. A peep is neither automatically good nor automatically useless.',
       },
       {
         title: 'First Line Fever', mood: 'sad',
@@ -1522,11 +1513,11 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '....X....',
         ],
         button: 'Climbing',
-        text: 'Playing on the **1st line** early. This stone makes almost no territory and cannot fight. It is a wasted move.',
+        text: 'An isolated **first-line** stone usually develops less space than a higher opening move. But low moves can be essential for capture, connection, or life. Judge the move’s purpose rather than banning an entire line.',
       },
       {
         title: 'Climbing the Lines', mood: 'happy', board: EMPTY, button: 'Filling your eyes',
-        text: 'Stay on the **3rd and 4th lines** until the position settles. The 1st and 2nd lines are for the endgame — when every point counts.',
+        text: 'The **third and fourth lines** are useful opening starting points. The lower lines also matter before the endgame when a concrete tactical need makes them urgent.',
       },
       {
         title: 'Filling Your Eyes', mood: 'sad',
@@ -1542,11 +1533,11 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
         ],
         taps: [{ x: 4, y: 5 }],
-        nudge: 'Do NOT tap here in a real game.',
-        text: 'This group has **one eye**. Beginners panic and fill it themselves. **Tap the eye** to see what happens.',
+        nudge: 'Tap the central point to compare liberties.',
+        text: 'This chain surrounds one empty point and also has **twelve outside liberties**. Filling the inside point removes one liberty; it does not automatically kill the chain. **Tap the inside point** to compare.',
       },
       {
-        title: 'You Killed It', mood: 'sad', button: 'Mistakes Complete',
+        title: 'Read the Outside Too', mood: 'sad', button: 'Mistakes Complete',
         board: [
           '.........',
           '.........',
@@ -1558,11 +1549,11 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        text: 'You filled your own eye. Now the group has **zero** eyes — it is dead. **Never fill your own eyes.** If a group has one eye, it was already dead. Accept it.',
+        text: 'The solid chain still has **twelve liberties outside**. It has not been captured, and this diagram does not prove it dead. Protect useful eye space, but read the whole position: an inside move may be needed to capture, connect, or build two eyes.',
       },
       {
         title: 'Mistakes Complete', mood: 'proud', button: 'Return to Study Room',
-        text: '**Do not save dead stones. Do not peep without purpose. Stay off the 1st line. Never fill your own eyes.** Avoid these four and you will beat most beginners. **Return to the Study Room.**',
+        text: '**Read before declaring death. Give peeps a purpose. Judge low moves by their job. Count outside liberties as well as eye space.** These questions are more reliable than absolute slogans. **Return to the Study Room.**',
       },
     ],
   },
@@ -1600,7 +1591,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
         ],
         lines: [{ axis: 'row', index: 2 }],
-        text: 'The fourth line (high) radiates power. But White **slides in above** on the third line (low) — and your skirt is gone. *Balance:* low for territory, high for influence.',
+        text: 'This separate comparison adds three White stones on the lower third line; they are not a single reply. It illustrates the space left underneath a high stone. Neither color has enclosed territory here. Low moves tend toward territory, while high moves tend toward influence; evaluate the actual surrounding position.',
       },
       {
         title: 'Connection', mood: 'happy',
@@ -1694,7 +1685,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
         ],
         taps: [{ x: 4, y: 5 }],
         nudge: 'Tap the glowing point — the sente atari.',
-        text: '**Sente** is a move that *forces* an answer — White must reply, so you keep the initiative. **Gote** is the opposite: a move White can *ignore* to play elsewhere instead, stealing the initiative from you. This atari is sente: White must respond or die. **Tap the glowing point.**',
+        text: '**Sente** is a move that *forces* an answer — White must reply, so you keep the initiative. **Gote** describes a sequence after which the opponent has the initiative. Even a gote sequence can contain forced replies. This atari is sente: White must respond or die. **Tap the glowing point.**',
       },
       {
         title: 'Atari!', mood: 'happy', button: 'White must answer',
@@ -1724,7 +1715,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        text: 'White **must** connect upward — or the stone dies. White has no choice.',
+        text: 'White can extend upward to save the threatened stone for now. White may instead sacrifice it if another move is worth more.',
       },
       {
         title: 'The Initiative', mood: 'happy', button: 'Attack',
@@ -1739,7 +1730,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        text: 'White connected — and **now** Black plays the big point. White was busy; Black chose where. **Sente means you decide where the game is played.** Spend it well.',
+        text: 'White answered the threat; Black then played elsewhere. **Sente** describes retaining the initiative through an exchange. It depends on the opponent valuing a reply more than other opportunities; a threat does not force every opponent to answer.',
       },
       {
         title: 'Attack for Profit', mood: 'happy',
@@ -1756,7 +1747,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
         ],
         taps: [{ x: 6, y: 3 }],
         nudge: 'Tap the glowing point — strike from the far side.',
-        text: 'Never attack to *kill* — attack to **profit** while chasing. White is weak; your wall (left) is strong. **Tap the glowing point**: strike from the far side so White runs *toward* your strength.',
+        text: 'An attack can gain territory, influence, or initiative even without a capture. Capturing is also worthwhile when the reading and whole-board value justify it. **Tap the marked contact** to examine one illustrative sequence, not a forced best move.',
       },
       {
         title: 'Struck', mood: 'happy', button: 'White runs',
@@ -1771,7 +1762,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        text: 'Your strike landed. White is in trouble.',
+        text: 'Black has attached on the right. White still has **five liberties**. Contact alone does not establish that White is in trouble; examine replies and Black’s own safety.',
       },
       {
         title: 'White Runs', mood: 'happy', button: 'Black builds',
@@ -1786,7 +1777,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        text: 'White **runs** — one stone pushing out, away from your wall. Don\'t chase to kill. Let them run.',
+        text: 'White extends downward, **away from the left wall**. This is one possible reply, not a forced move. The White chain now has **six liberties**; Black must reassess rather than assume a successful attack.',
       },
       {
         title: 'Black Builds', mood: 'happy', button: 'The deal',
@@ -1801,7 +1792,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        text: 'While White runs, you **build** — jumping out from the wall to start enclosing. The territory is taking shape. This is attacking for profit.',
+        text: 'Black adds a stone above White. It is **not solidly connected** to the left wall. The gaps remain contestable; this is a developing framework, not secured territory.',
       },
       {
         title: 'The Deal', mood: 'happy', button: 'Life & death',
@@ -1816,7 +1807,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        text: 'Look at the result: White ran but got **nothing** — your wall is growing and the territory is yours. You didn\'t kill; you profited. That is the deal: profit, not corpses.',
+        text: 'White has extended and Black has added pressure. Neither the framework nor the claimed profit is settled. Read cuts, connections, and alternative replies before deciding whether this exchange helped Black.',
       },
       {
         title: 'Balances Complete', mood: 'proud', button: 'Return to Study Room',
@@ -1977,100 +1968,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
         ],
         text: 'Black didn\'t add to the safe corner — Black played **toward the weak stones**, giving them an ally. Toward weakness — yours and theirs. Never add weight to what is already strong.',
       },
-      {
-        title: 'Probing', mood: 'happy', button: 'Test the shape',
-        board: [
-          '.........',
-          '.........',
-          '.........',
-          '.........',
-          '...XXX...',
-          '.........',
-          '.........',
-          '.........',
-          '.........',
-        ],
-        text: '**Probing** means testing the opponent\'s shape with a light move. You are not committing — you are *asking a question*. How they answer tells you their weakness.',
-      },
-      {
-        title: 'The Probe', mood: 'excited',
-        board: [
-          '.........',
-          '.........',
-          '.........',
-          '.........',
-          '...XXX...',
-          '.........',
-          '.........',
-          '.........',
-          '.........',
-        ],
-        taps: [{ x: 4, y: 3 }],
-        nudge: 'Tap to probe.',
-        text: '**Tap the glowing point** to peep at the shape. This is a probe — light, non-committal. Watch how Black responds.',
-      },
-      {
-        title: 'Strong Answer', mood: 'happy', button: 'What if weak?',
-        board: [
-          '.........',
-          '.........',
-          '.........',
-          '...XOX...',
-          '...XXX...',
-          '.........',
-          '.........',
-          '.........',
-          '.........',
-        ],
-        text: 'Black answered **solidly** — connecting around your probe. The shape is strong. **Do not attack here.** But what if Black answers poorly?',
-      },
-      {
-        title: 'Weak Answer', mood: 'excited', button: 'Strike!',
-        board: [
-          '.........',
-          '.........',
-          '.........',
-          '....OX...',
-          '...XXX...',
-          '.........',
-          '.........',
-          '.........',
-          '.........',
-        ],
-        text: 'Black **ignored** the probe — or answered timidly. See the gap? The shape is **weak**. This is what you were looking for.',
-      },
-      {
-        title: 'Strike the Weakness', mood: 'excited',
-        board: [
-          '.........',
-          '.........',
-          '.........',
-          '....OX...',
-          '...XXX...',
-          '.........',
-          '.........',
-          '.........',
-          '.........',
-        ],
-        taps: [{ x: 3, y: 3 }],
-        nudge: 'Tap to cut through the gap.',
-        text: '**Tap the glowing point** to cut through. The probe told you where to strike. **Probe to learn, then strike where it is weak.**',
-      },
-      {
-        title: 'Cut Through', mood: 'happy', button: 'Strategies Complete',
-        board: [
-          '.........',
-          '.........',
-          '.........',
-          '...OOX...',
-          '...XXX...',
-          '.........',
-          '.........',
-          '.........',
-          '.........',
-        ],
-        text: 'You cut through the gap. Black\'s weak response is punished — the probe told you where, and you struck. **This is how probing pays off.**',
-      },
+      ...PROBING_BEATS,
       {
         title: 'Strategies Complete', mood: 'proud', button: 'Return to Study Room',
         text: 'Ko fights, direction, and probing. You now think like a fighter. **Return to the Study Room** — the Endgame awaits.',
@@ -2081,147 +1979,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
   // ================================================================
   // 5. ENDGAME
   // ================================================================
-  {
-    id: 'endgame',
-    title: 'Endgame',
-    beats: [
-      {
-        title: 'Iwao', mood: 'happy', board: EMPTY, button: 'Begin',
-        text: 'The endgame (**yose**) is where games are won by half-points. Three skills: take the **biggest** moves first, know **sente** from gote — and **count**.',
-      },
-      {
-        title: 'A Finished Fight', mood: 'happy', button: 'Where to play?',
-        board: [
-          '..OOOOO..',
-          '..O...O..',
-          '..OOOOO..',
-          '.........',
-          '.........',
-          '.........',
-          '...XXX...',
-          '...X.X...',
-          '...XXX...',
-        ],
-        text: 'The fighting is done. White owns the top, Black owns the bottom. The **boundaries** between them are open — that is where the endgame lives.',
-      },
-      {
-        title: 'Biggest First', mood: 'happy',
-        board: [
-          '..OOOOO..',
-          '..O...O..',
-          '..OOOOO..',
-          '.........',
-          '.........',
-          '.........',
-          '...XXX...',
-          '...X.X...',
-          '...XXX...',
-        ],
-        choices: [
-          { x: 4, y: 3, correct: true },
-          { x: 4, y: 5, correct: false, nudge: 'That gap is narrower — the wider one takes more.' },
-        ],
-        nudge: 'Tap the wider gap.',
-        text: 'Black to play. White\'s wall ends at the top, yours starts at the bottom. Between them: two gaps — one just below White\'s wall, one just above yours. The upper gap is **wider**. **Tap the wider gap.**',
-      },
-      {
-        title: 'Sealed', mood: 'happy', button: 'White plays',
-        board: [
-          '..OOOOO..',
-          '..O...O..',
-          '..OOOOO..',
-          '....X....',
-          '.........',
-          '.........',
-          '...XXX...',
-          '...X.X...',
-          '...XXX...',
-        ],
-        text: 'Black seals the wider gap. Now it\'s White\'s turn.',
-      },
-      {
-        title: 'White Plays', mood: 'happy', button: 'Black to play',
-        board: [
-          '..OOOOO..',
-          '..O...O..',
-          '..OOOOO..',
-          '....X....',
-          '.........',
-          '.....O...',
-          '...XXX...',
-          '...X.X...',
-          '...XXX...',
-        ],
-        text: 'White takes a small point near your wall. Fine — Black got the big one. Now Black to play again.',
-      },
-      {
-        title: 'Sente Endgame', mood: 'happy',
-        board: [
-          '..OOOOO..',
-          '..O...O..',
-          '..OOOOO..',
-          '....X....',
-          '.........',
-          '.....O...',
-          '...XXX...',
-          '...X.X...',
-          '...XXX...',
-        ],
-        taps: [{ x: 4, y: 5 }],
-        nudge: 'Tap the glowing point — a sente endgame move.',
-        text: 'Black to play. The lower gap is still open. This hane **threatens** White\'s stone — White must answer. **Tap the glowing point.**',
-      },
-      {
-        title: 'Played', mood: 'happy', button: 'White must answer',
-        board: [
-          '..OOOOO..',
-          '..O...O..',
-          '..OOOOO..',
-          '....X....',
-          '.........',
-          '....XO...',
-          '...XXX...',
-          '...X.X...',
-          '...XXX...',
-        ],
-        text: 'Black hanes next to White\'s stone, leaning on it — White\'s liberties are getting tight. White answers to stay safe.',
-      },
-      {
-        title: 'White Must Answer', mood: 'happy', button: 'Count',
-        board: [
-          '..OOOOO..',
-          '..O...O..',
-          '..OOOOO..',
-          '....X....',
-          '.........',
-          '....XOO..',
-          '...XXX...',
-          '...X.X...',
-          '...XXX...',
-        ],
-        text: 'White **must** answer — or Black seals the gap and White\'s stone gets cramped. Black got points *and* White spent a move answering. **Sente is double**, even in the endgame.',
-      },
-      {
-        title: 'Count', mood: 'happy', button: 'Finish',
-        board: [
-          '..OOOOO..',
-          '..O...O..',
-          '..OOOOO..',
-          '....X....',
-          '.........',
-          '....XOO..',
-          '...XXX...',
-          '...X.X...',
-          '...XXX...',
-        ],
-        text: 'Boundaries closed. Now **count**: Black\'s bottom against White\'s top. The player who took the biggest moves first usually wins by a point or two.',
-      },
-      {
-        title: 'Endgame Complete', mood: 'proud', button: 'Return to Study Room',
-        text: 'Big moves first, sente is double, always count. Games are won here by half-points — now you will be the one winning them. **Return to the Study Room**.',
-      },
-    ],
-  },
+  ENDGAME_LESSON,
   {
     id: 'moves',
     title: 'Essential Moves',
@@ -2437,7 +2195,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
         ],
         taps: [{ x: 5, y: 5 }],
         nudge: 'Tap the glowing point — the diagonal.',
-        text: 'The **diagonal** (*kosumi*) — one step sideways and forward. Solid: it connects without leaving a cut. **Tap the glowing point.**',
+        text: 'The **diagonal** (*kosumi*) — one step sideways and forward. A compact connection shape, but these diagonal stones are not yet one chain. Nearby enemy stones can make the connection vulnerable. **Tap the glowing point.**',
       },
       {
         title: 'Kosumi', mood: 'happy', button: 'The shoulder hit',
@@ -2452,7 +2210,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        text: 'Touching at the corner — nothing can cut between them.',
+        text: 'These stones have two potential connecting points. In this open position you can usually answer at one if the opponent plays at the other; surrounding liberties can change that.',
       },
       {
         title: 'The Shoulder Hit', mood: 'happy',
@@ -2461,15 +2219,15 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
           '.........',
-          '....OO...',
+          '....O....',
           '.........',
           '.........',
           '.........',
           '.........',
         ],
-        taps: [{ x: 4, y: 3 }],
+        taps: [{ x: 5, y: 3 }],
         nudge: 'Tap the glowing point — hit the shoulder.',
-        text: 'The **shoulder hit** — strike the *shoulder* of their base to unsettle it. Light, annoying, and hard to punish. **Tap the glowing point.**',
+        text: 'The **shoulder hit** — strike the *shoulder* of their base to unsettle it. A diagonal approach to the stone, often used to reduce influence. It is not an attachment, and its safety depends on support. **Tap the glowing point.**',
       },
       {
         title: 'Unsettled', mood: 'happy', button: 'The cap',
@@ -2477,14 +2235,14 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
           '.........',
-          '....X....',
-          '....OO...',
+          '.....X...',
+          '....O....',
           '.........',
           '.........',
           '.........',
           '.........',
         ],
-        text: 'White\'s base wobbles. The shoulder hit doesn\'t kill — it *annoys*, and annoying moves win games.',
+        text: 'The diagonal pressure invites White to respond. A shoulder hit often reduces a framework; it does not establish that White is dead or that a base has been destroyed.',
       },
       {
         title: 'The Cap', mood: 'happy',
@@ -2499,9 +2257,9 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
         ],
-        taps: [{ x: 4, y: 4 }],
+        taps: [{ x: 4, y: 3 }],
         nudge: 'Tap the glowing point — cap them.',
-        text: 'The **cap** (*boshi*) — a lid on their escape. Play *above* the running stone and they\'re trapped underneath. **Tap the glowing point.**',
+        text: 'The **cap** (*boshi*) — a lid on their escape. Play ahead of the stone toward the center, with space between the stones, to limit its route out. A cap applies pressure; it does not guarantee a capture. **Tap the glowing point.**',
       },
       {
         title: 'Capped', mood: 'happy', button: 'Finish',
@@ -2509,14 +2267,14 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.........',
           '.........',
-          '.........',
           '....X....',
+          '.........',
           '....O....',
           '.........',
           '.........',
           '.........',
         ],
-        text: 'The lid is on. White can\'t jump over — the cap turns escape into a cage.',
+        text: 'Black limits the direct route toward the center. White can still try the sides, attach, or cut depending on support. Read the responses before claiming a capture.',
       },
       {
         title: 'Moves Complete', mood: 'proud', button: 'Return to Study Room',
@@ -2556,7 +2314,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           { x: 4, y: 3 }, { x: 4, y: 4 }, { x: 4, y: 5 },
         ],
         button: 'Fill dame first',
-        text: '**Dame** (dah-may) are neutral points — empty intersections that are **not** inside either player\'s territory. Black is left, White is right. The marks show dame — neither side\'s territory. They don\'t score for anyone, but you **fill them before passing**.',
+        text: '**Dame** (dah-may) are neutral points — empty intersections that are **not** inside either player\'s territory. Black is left, White is right. The marks show dame — neither side\'s territory. The empty points do not count as territory. Under Chinese area scoring, a living stone placed on dame adds to your area. Under Japanese scoring, ordinary dame adds no territory points; fill it to settle the boundaries, but leave shared seki liberties alone.',
       },
       {
         title: 'Fill Dame First', mood: 'happy', button: 'How to count',
@@ -2565,14 +2323,14 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
           '.XX...OO.',
           '.XX...OO.',
-          '....!....',
+          '.........',
           '.XX...OO.',
           '.XX...OO.',
           '.........',
           '.........',
         ],
         marks: [{ x: 4, y: 4 }],
-        text: 'Fill all the dame, *then* pass. The marked point is neutral — worth no points, but fill it anyway. If you pass with dame unfilled, your opponent might play there to confuse the count. **Dame first, pass second.**',
+        text: 'Fill all the dame, *then* pass. The marked point is neutral — worth no points, but fill it anyway. Under area scoring, an opponent who fills ordinary dame can gain points. Under Japanese scoring, filling it clarifies the settled board. Do not fill shared seki liberties just because they are neutral. **Dame first, pass second.**',
       },
       {
         title: 'How to Count', mood: 'happy', board: EMPTY, button: 'Japanese rules',
@@ -2608,7 +2366,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           '.........',
         ],
         button: 'Komi',
-        text: '**Chinese:** Your score is **your stones on the board** plus **empty territory you surround**. Same board: Black has 8 stones + 1 territory = **9**. (Don\'t compare 9 to the Japanese 3 — the *difference* between players is what matters, and it\'s the same.)',
+        text: '**Chinese:** Your score is **your stones on the board** plus **empty territory you surround**. Same board: Black has 8 stones + 1 territory = **9**. (Don\'t compare 9 to the Japanese 3 — the *difference* between players is what matters, and the two methods usually agree on the winner after proper finishing, but their margins need not be identical.)',
       },
       {
         title: 'Komi', mood: 'happy', board: EMPTY, button: 'False eyes',
@@ -2616,38 +2374,19 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
       },
       {
         title: 'False Eyes', mood: 'happy',
-        board: [
-          '.........',
-          '.........',
-          '..XXX....',
-          '..XOX....',
-          '..X.X....',
-          '..XXX....',
-          '.........',
-          '.........',
-          '.........',
-        ],
-        marks: [
-          { x: 3, y: 3 },
-        ],
-        button: 'Why false?',
-        text: 'This Black group *looks* like it has an eye. But White just played inside! An eye with an **enemy stone inside** is not a real eye — yet.',
+        board: [".XO......", "XO.......", "O........", ".........", ".........", ".........", ".........", ".........", "........."],
+        marks: [{x:0,y:0}], button: 'Test the eye',
+        text: 'The empty corner looks like an eye, but the two Black stones are separate chains. Each has only that point as a liberty. This is a **false eye**: White can play inside and capture the surrounding stones.',
       },
       {
         title: 'Why False?', mood: 'happy',
-        board: [
-          '.........',
-          '.........',
-          '..XXX....',
-          '..XOX....',
-          '..X.X....',
-          '..XXX....',
-          '.........',
-          '.........',
-          '.........',
-        ],
-        button: 'Seki',
-        text: 'White\'s stone has only **one liberty** — the other empty point. Black plays there next, captures White, and the eye becomes real. A **false eye** is one the opponent can *spoil* by playing inside. If they can\'t (because you\'d capture them), it\'s a real eye. **One real eye is not enough** — you need two.',
+        board: [".XO......", "XO.......", "O........", ".........", ".........", ".........", ".........", ".........", "........."], taps:[{x:0,y:0}], demoWhite:true,
+        text: '**White to play.** Tap the marked corner. Capturing the two Black stones gives White liberties, so this is legal — capture is checked before suicide. A real eye cannot be destroyed this way when its surrounding group is secure.',
+      },
+      {
+        title:'The capture proves it', mood:'happy', button:'Seki',
+        board:["O.O......", ".O.......", "O........", ".........", ".........", ".........", ".........", ".........", "........."],
+        text:'White captured both Black stones. An enemy stone inside is not the definition of a false eye: the important question is whether the surrounding chains can keep the eye without being forced into capture. Two separate secure eyes protect a group; fewer eyes require reading, and seki is another way to live.',
       },
       {
         title: 'Seki', mood: 'happy',
@@ -2666,7 +2405,7 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
           { x: 4, y: 3 }, { x: 4, y: 4 },
         ],
         button: 'Finish',
-        text: '**Seki** (seh-kee) means *mutual life*. Neither side has two eyes — but neither can capture the other. The two marked points are **shared liberties**. If Black fills one, White fills the other and captures *everything*. If White starts it, Black does the same. So **both live** without eyes. It\'s rare, it\'s strange, and it\'s real. (GoLuxe does not mark seki as alive — it\'s not *unconditional*.)',
+        text: '**Seki** (seh-kee) means *mutual life*. Neither side has two eyes — but neither can capture the other. The two marked points are **shared liberties**. If Black fills one, White fills the other and captures *everything*. If White starts it, Black does the same. So **both live** without eyes. It\'s rare, it\'s strange, and it\'s real. (During scoring, mark both mutually dependent groups as Seki. Japanese rules exclude their private eyes from territory; Chinese rules count living stones and private enclosed points.)',
       },
       {
         title: 'Finish', mood: 'proud', button: 'Return to Study Room',
@@ -2675,4 +2414,6 @@ export const SENSEI_LESSONS: SenseiLesson[] = [
     ],
   },
 
+  LADDER_LESSON,
+  NET_LESSON,
 ];

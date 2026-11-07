@@ -4,7 +4,7 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import { useTheme, TextInput } from '../ui';
 import { Pressable, ScrollView, Text, View, LinearGradient, AnimatedView } from '../ui';
 import React, { useRef, useState, useEffect } from 'react';
-import { Modal, StyleSheet, Image, Animated as NativeAnimated, ScrollView as NativeScrollView } from 'react-native';
+import { Modal, StyleSheet, Image, Animated as NativeAnimated, type ScrollViewInstance } from 'react-native';
 import { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import Svg, {Circle, Path, Polyline} from 'react-native-svg';
@@ -30,6 +30,10 @@ interface SidebarProps {
   visible: boolean;
   onClose: () => void;
   onExitToMenu: () => void;
+  showCoordinates: boolean;
+  setShowCoordinates: (v:boolean)=>void;
+  showMoveNumbers: boolean;
+  setShowMoveNumbers: (v:boolean)=>void;
   showLiberties: boolean;
   setShowLiberties: (v: boolean) => void;
   showAtariWarning: boolean;
@@ -53,6 +57,8 @@ interface SidebarProps {
   setKomiValue: (v: number) => void;
   boardTheme: BoardTheme;
   setBoardTheme: (t: BoardTheme) => void;
+  onSaveRecord:()=>void;
+  onSavedRecords:()=>void;
   onExportSgf: () => void;
   onImportSgf: () => void;
 }
@@ -116,7 +122,7 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
   const insets = useSafeAreaInsets();
   const {customKomi, setCustomKomi} = p;
   const scrollOffset = useRef(0);
-  const scrollRef = useRef<NativeScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const [help, setHelp] = useState<null | 'fundamentals' | 'concepts' | 'practice' | 'handicap' | 'sgf'>(null);
   const [confirmHandicap, setConfirmHandicap] = useState(false);
   if (!p.visible) return null;
@@ -151,6 +157,8 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
           <View style={styles.section}>
             <SectionTitle onHelp={() => setHelp('practice')}>Practice Aids</SectionTitle>
             <View style={{ gap: 8 }}>
+              <ToggleRow label="Coordinates" value={p.showCoordinates} onToggle={()=>p.setShowCoordinates(!p.showCoordinates)} />
+              <ToggleRow label="Move Numbers" value={p.showMoveNumbers} onToggle={()=>p.setShowMoveNumbers(!p.showMoveNumbers)} />
               <ToggleRow label="Liberties" value={p.showLiberties} onToggle={() => p.setShowLiberties(!p.showLiberties)} />
               <ToggleRow label="Atari Warning" value={p.showAtariWarning} onToggle={() => p.setShowAtariWarning(!p.showAtariWarning)} />
               <ToggleRow label="Alive Status" value={p.showLifeStatus} onToggle={() => p.setShowLifeStatus(!p.showLifeStatus)} />
@@ -196,6 +204,7 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
                     </Pressable>
                   ))}
                 </View>
+                {p.handicapType==='fixed'&&<Text style={{fontSize:10,color:C.white40,lineHeight:15}}>Fixed: count-specific layout. 9×9 uses third-line corners; 13×13 uses fourth-line corners. Small-board conventions vary.</Text>}
                 <View style={styles.countRow}>
                   <Text style={styles.countLabel}>Extra Stones (+{p.handicapCount})</Text>
                   <Text style={styles.countTotal}>Total {p.handicapCount + 1}</Text>
@@ -212,7 +221,7 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
                 {p.handicapOn ? (
                   <Text style={styles.komiLocked}>Locked — handicap replaces komi</Text>
                 ) : (
-                  p.komiDirection === 'none' && <Text style={styles.komiLocked}>Tie-Breaker (0.5)</Text>
+                  p.komiDirection === 'none' && <Text style={styles.komiLocked}>No komi (0)</Text>
                 )}
               </View>
               <View style={styles.segBox} pointerEvents={p.handicapOn ? 'none' : 'auto'}>
@@ -223,7 +232,7 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
                     style={({pressed})=>[styles.komiSeg,p.komiDirection===d&&styles.komiSegOn,pressed&&styles.pressed]}
                   >
                     <Text style={[styles.komiSegText, p.komiDirection === d && styles.komiSegTextOn]}>
-                      {d === 'none' ? 'None' : d === 'reverse' ? 'Reverse' : 'Standard'}
+                      {d === 'none' ? 'Zero' : d === 'reverse' ? 'Reverse' : 'Standard'}
                     </Text>
                   </Pressable>
                 ))}
@@ -270,6 +279,8 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
           <View style={styles.section}>
             <SectionTitle onHelp={() => setHelp('sgf')}>Game Record</SectionTitle>
             <View style={{ gap: 8 }}>
+              <Pressable onPress={p.onSaveRecord} style={({pressed})=>[styles.recordBtn,pressed&&styles.pressed]}><Text style={styles.recordText}>Save Record</Text></Pressable>
+              <Pressable onPress={p.onSavedRecords} style={({pressed})=>[styles.recordBtn,pressed&&styles.pressed]}><Text style={styles.recordText}>Saved Records</Text></Pressable>
               <Pressable onPress={p.onExportSgf} style={({pressed})=>[styles.recordBtn,pressed&&styles.pressed]}>
                 <Text style={styles.recordText}>Export SGF</Text>
                 <View style={styles.recordIcon}><Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={themeMode==='light'?'#a8a29e':C.white20} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><Path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><Polyline points="17 8 12 3 7 8"/><Path d="M12 3v12"/></Svg></View>
@@ -317,7 +328,7 @@ const Sidebar: React.FC<SidebarProps> = (p) => {
           <H4>Mastering the Grid</H4>
           <P>Beyond the simple rules of capture lie the strategic pillars that define a master's play. These concepts represent the higher dialogue of the stones.</P>
           {[
-            ['1. Iki-shini (Life & Death)', 'The most vital concept. A group is only truly alive if it can secure two separate \'eyes\'. Without two eyes, a group is dead even if it still has liberties.'],
+            ['1. Iki-shini (Life & Death)', 'The most vital concept. Two secure eyes establish life. With fewer eyes, a group may still make another eye, connect to safety, or live in seki; read before judging it dead.'],
             ['2. Sente & Gote (Initiative)', 'Sente is a move that requires a response, keeping the initiative. Gote ends the sequence. Mastering this \'flow\' is key to high-level play.'],
             ['3. Renraku & Kiri (Connection & Cutting)', 'Stones are stronger when linked. \'Cutting\' separates weak groups to attack, while \'Connecting\' ensures your own structural survival.'],
             ['4. Ji & Moyo (Territory & Influence)', 'Ji represents immediate, secured points. Moyo represents potential territory built from influence, creating a powerful zone for later control.'],

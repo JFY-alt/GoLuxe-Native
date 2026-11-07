@@ -1,3 +1,4 @@
+import {savePracticeSolve} from '../storage/studyProgress';
 import GlassBackdrop from '../components/GlassBackdrop';
 import Dialog from '../components/Dialog';
 import DojoBackdrop from '../components/DojoBackdrop';
@@ -19,7 +20,7 @@ import { renderMarkup } from '../components/Markup';
 import { SENSEI_LESSONS, SenseiBeat, parseSenseiBoard } from '../data/senseiLessons';
 import { checkCaptures, createEmptyBoard, getBoardString, isSelfCapture } from '../logic/goEngine';
 import { Intersection, Point } from '../types';
-import { getSenseiProgress, saveSenseiProgress } from './StudyMenu';
+import { getViewedStudyProgress, saveSenseiProgress } from '../storage/studyProgress';
 import { C, SERIF } from '../theme';
 
 
@@ -44,16 +45,22 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
   const lesson = SENSEI_LESSONS.find((l) => l.id === topic);
 
   const [ready,setReady]=useState(false);
+  const [bookmarkNotice,setBookmarkNotice]=useState<string|null>(null);
   const [confirmExit,setConfirmExit]=useState(false);
+  const [bookmarkStatus,setBookmarkStatus]=useState<'none'|'saving'|'saved'|'failed'>('none');
+  const bookmarkRevision=useRef(0),finishing=useRef(false);
   const [board, setBoard] = useState<Intersection[][]>(() => createEmptyBoard(9));
   const [history, setHistory] = useState<string[]>(() => [getBoardString(createEmptyBoard(9))]);
   const [beatIdx, setBeatIdx] = useState(0);
+  const [solved,setSolved]=useState(false);
   const [tapIdx, setTapIdx] = useState(0);
   const [nudge, setNudge] = useState<string | null>(null);
   const [targets, setTargets] = useState<Point[]>([]);
   const [marks, setMarks] = useState<{ x: number; y: number; c?: 'black' | 'white' }[]>([]);
   const [lines, setLines] = useState<{ axis: 'row' | 'col'; index: number }[]>([]);
-  const nudgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const attempts=useRef(0);
+  const solvedRef=useRef(false);
+  const activeBeat=useRef(-1);
 
   const beat: SenseiBeat | undefined = lesson?.beats[beatIdx];
 
@@ -63,10 +70,11 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
     if (!bt) return;
     const b=lessonBoard(lesson,idx);
     setBoard(b);setHistory([getBoardString(b)]);
-    setBeatIdx(idx);
-    setTapIdx(0);
+    setBeatIdx(idx);activeBeat.current=idx;attempts.current=0;solvedRef.current=false;
+    setTapIdx(0);setSolved(false);
     setNudge(null);
-    if (bt.choices) setTargets(bt.choices.map((c) => ({ x: c.x, y: c.y })));
+    if(bt.unmarked)setTargets([]);
+    else if (bt.choices) setTargets(bt.choices.map((c) => ({ x: c.x, y: c.y })));
     else if (bt.taps && bt.taps.length > 0) setTargets([bt.taps[0]]);
     else setTargets([]);
     setMarks((bt.marks || []).map((m) => ({ x: m.x, y: m.y, c: m.c || 'black' })));
@@ -75,34 +83,42 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
 
   useEffect(() => {
     let cancelled=false;
-    getSenseiProgress().then(progress=>{if(cancelled||!lesson)return;setupBeat(resumeBeat(lesson,progress[topic]));setReady(true);});
-    return ()=>{cancelled=true;if(nudgeTimer.current)clearTimeout(nudgeTimer.current);};
+    setReady(false);setBookmarkNotice(null);setBookmarkStatus('none');finishing.current=false;
+    getViewedStudyProgress().then(state=>{if(cancelled||!lesson)return;setupBeat(resumeBeat(lesson,state.current[topic]));setBookmarkNotice(state.readFailed?'Your viewed bookmark could not be loaded. Starting at the beginning; existing saved data has been retained.':state.earlier[topic]?'This lesson has changed, or its earlier version cannot be verified. Starting at the beginning; your earlier bookmark is retained.':null);setReady(true);});
+    return ()=>{cancelled=true;activeBeat.current=-1;bookmarkRevision.current++;};
   }, [topic]);
   useEffect(()=>{const subscription=BackHandler.addEventListener('hardwareBackPress',()=>{setConfirmExit(true);return true;});return()=>subscription.remove();},[]);
 
   const wrongTap = (msg: string) => {
     setNudge(msg);
-    if (nudgeTimer.current) clearTimeout(nudgeTimer.current);
-    nudgeTimer.current = setTimeout(() => setNudge(null), 2500);
+    // Keep the explanation visible until the learner answers or changes beat.
   };
 
   const advance = () => {
-    if (!ready||!lesson) return;
-    if (beatIdx + 1 >= lesson.beats.length) {
-      saveSenseiProgress(topic, lesson.beats.length - 1);
-      onExit();
-      return;
-    }
-    saveSenseiProgress(topic, beatIdx + 1);
-    setupBeat(beatIdx + 1);
+    if (!ready||!lesson||finishing.current) return;
+    const final=beatIdx+1>=lesson.beats.length;
+    const next=final?lesson.beats.length-1:beatIdx+1;
+    const revision=++bookmarkRevision.current;
+    setBookmarkStatus('saving');
+    if(final)finishing.current=true;
+    else setupBeat(next);
+    void saveSenseiProgress(topic,next).then(saved=>{
+      if(activeBeat.current<0||revision!==bookmarkRevision.current)return;
+      setBookmarkStatus(saved?'saved':'failed');
+      if(final){
+        finishing.current=false;
+        if(saved)onExit();
+        else setNudge('This device could not save your lesson bookmark. Tap the button to retry, or use Exit Lesson to leave without saving it.');
+      }
+    });
   };
 
-  const placeBlack = (p: Point): boolean => {
+  const placeStudent = (p: Point): boolean => {
     if (board[p.y][p.x]) return false;
-    if (isSelfCapture(board, p, 'black')) return false;
+    if (isSelfCapture(board, p, beat?.studentColor||'black')) return false;
     const temp = board.map((row) => [...row]);
-    temp[p.y][p.x] = 'black';
-    const { newBoard, captureCount } = checkCaptures(temp, p, 'black');
+    temp[p.y][p.x] = beat?.studentColor||'black';
+    const { newBoard, captureCount } = checkCaptures(temp, p, beat?.studentColor||'black');
     void captureCount;
     const boardStr = getBoardString(newBoard);
     if (history.includes(boardStr)) return false; // ko
@@ -112,19 +128,24 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
   };
 
   const onBoardTap = (p: Point) => {
-    if (!ready||!beat) return;
+    if (!ready||!beat||solvedRef.current) return;
     if (beat.choices) {
+      if(beat.unmarked)attempts.current++;
       const choice = beat.choices.find((c) => c.x === p.x && c.y === p.y);
       if (choice && choice.correct) {
-        if (!placeBlack(p)) {
+        if (!placeStudent(p)) {
           wrongTap('Hmm, that move is not legal here.');
           return;
         }
-        advance();
+        if(beat.unmarked){
+          solvedRef.current=true;setSolved(true);setNudge(null);
+          const index=beatIdx;
+          void savePracticeSolve(lesson!,index,attempts.current).then(saved=>{if(!saved&&activeBeat.current===index)setNudge('Solved, but this device could not save the practice record.');});
+        }else advance();
       } else if (choice) {
         wrongTap(choice.nudge || 'Not quite — look again.');
       } else {
-        wrongTap(beat.nudge || 'Tap one of the glowing points.');
+        wrongTap(beat.unmarked?'Read the requested local result and count the relevant liberties. Try another point.':beat.nudge || 'Tap one of the glowing points.');
       }
       return;
     }
@@ -135,7 +156,7 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
           advance(); // demo: the next beat's diagram shows White's move
           return;
         }
-        if (!placeBlack(p)) {
+        if (!placeStudent(p)) {
           wrongTap('Hmm, that move is not legal here.');
           return;
         }
@@ -166,7 +187,7 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
     );
   }
 
-  const isInteractive = !!((beat.taps && beat.taps.length > 0) || beat.choices);
+  const isInteractive = !solved && !!((beat.taps && beat.taps.length > 0) || beat.choices);
   const buttonLabel = isInteractive ? undefined : beat.button === null ? undefined : beat.button || 'Next';
   const mood: SenseiMood = beat.mood;
 
@@ -177,16 +198,18 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
       <SafeAreaView style={{flex:1}} edges={['top','right','bottom','left']}>
       <ScrollView style={{opacity: ready ? 1 : 0}} pointerEvents={ready ? 'auto' : 'none'} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <GuideHeader boardSize={lesson.boardSize||9}/>
+        {bookmarkNotice&&<Text accessibilityRole="alert" style={{color:'rgba(255,255,255,0.7)',textAlign:'center',paddingHorizontal:20,paddingBottom:10}}>{bookmarkNotice}</Text>}
         <View style={styles.boardPad}>
           <Board
             board={board}
             lastMove={null}
             onIntersectionPress={onBoardTap}
-            turn="black"
+            turn={beat.studentColor||'black'}
             boardPx={BOARD_PX}
             interactive={ready}
-            showLiberties
-            hideAtari={false}
+            showLiberties={!beat.unmarked}
+            showLifeStatus={!beat.unmarked}
+            hideAtari={!!beat.unmarked}
             theme={themeMode === 'light' ? 'washi' : 'classic'}
             targets={targets}
             marks={marks}
@@ -216,8 +239,9 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
             </View>
             {/* Beat text transitions: fade+slide on every beat change */}
             <AnimatedView key={beatIdx}  style={styles.cardBody}>
-              <Text style={styles.cardText}>{renderMarkup(beat.text,'sensei')}</Text>
-              {nudge && <Text style={styles.nudge}>{nudge}</Text>}
+              <Text style={styles.cardText}>{renderMarkup(solved&&beat.feedback?beat.feedback:beat.text,'sensei')}</Text>
+              {solved&&beat.unmarked&&<Text style={styles.nudge}>Solved · {attempts.current} {attempts.current===1?'attempt':'attempts'}</Text>}
+              {nudge && <Text accessibilityLiveRegion="polite" style={styles.nudge}>{nudge}</Text>}
               {beat.chips && (
                 <View style={styles.chips}>
                   {beat.chips.map((c) => (
@@ -247,7 +271,8 @@ const SenseiScreen: React.FC<SenseiScreenProps> = ({ topic, onExit }) => {
         <GuideActions width={BOARD_PX}/>
       </ScrollView>
       </SafeAreaView>
-      <Dialog dialog={confirmExit?{title:'Exit Lesson?',description:'Your progress is saved — you can resume this lesson later.',confirmLabel:'Exit Lesson',danger:true,confirm:onExit}:null} onClose={()=>setConfirmExit(false)}/>
+      {bookmarkStatus==='failed'&&<Text accessibilityRole="alert" style={{color:'#fcd34d',textAlign:'center',paddingHorizontal:20,paddingVertical:6}}>Lesson bookmark could not be saved on this device.</Text>}
+      <Dialog dialog={confirmExit?{title:'Exit Lesson?',description:bookmarkStatus==='saved'?'Your viewed bookmark is saved on this device. Independent practice results are saved separately.':bookmarkStatus==='saving'?'Your viewed bookmark is still being saved. Leaving now may lose the latest bookmark.':bookmarkStatus==='failed'?'This device could not save your latest viewed bookmark. Exiting may lose it; previously saved progress is retained.':'There is no newly saved viewed bookmark for this visit. You can exit or continue the lesson.',confirmLabel:'Exit Lesson',danger:true,confirm:onExit}:null} onClose={()=>setConfirmExit(false)}/>
     </View>
   );
 };

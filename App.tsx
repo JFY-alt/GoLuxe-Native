@@ -19,6 +19,9 @@ import { ScreenFade } from './components/ScreenFade';
 import { C } from './theme';
 import UpdatePrompt from './components/UpdatePrompt';
 import { TimeSettings } from './types';
+import {LiveSession} from './logic/gameSession';
+import {loadSession} from './storage/gameSession';
+import Dialog,{DialogState} from './components/Dialog';
 
 type Screen =
   | 'menu'
@@ -67,13 +70,38 @@ function Navigator() {
   const [timeSettings, setTimeSettings] = useState<TimeSettings | null>(null);
   const [senseiTopic, setSenseiTopic] = useState<string>('fundamentals');
   const [gameKey, setGameKey] = useState(0);
+  const [savedSession,setSavedSession]=useState<LiveSession|null>(null);
+  const [initialSession,setInitialSession]=useState<LiveSession|null>(null);
+  const [recoveryError,setRecoveryError]=useState<string|null>(null);
+  const [recoveryDialog,setRecoveryDialog]=useState<DialogState|null>(null);
+  useEffect(()=>{
+    if(screen!=='menu')return;
+    let live=true;
+    loadSession().then(s=>{if(live){setSavedSession(s);setRecoveryError(null);}},()=>{if(live)setRecoveryError('Could not read game recovery. Saved data has been preserved.');});
+    return()=>{live=false;};
+  },[screen]);
+  const resumeGame=async()=>{
+    try {
+      const s=await loadSession();if(!s){setSavedSession(null);return;}
+      setInitialSession(s);setMode(s.mode);setAiConfig(s.aiConfig);setTimeSettings(s.timeSettings);
+      setGameKey(k=>k+1);setRecoveryError(null);setScreen('game');
+    }catch{setRecoveryDialog({title:'Could Not Recover Game',description:'The saved session could not be read. Its data has been preserved.'});}
+  };
 
-  const startGame = (m: 'ai' | '2p', cfg: AiConfig | null, ts: TimeSettings | null = null) => {
+  const beginNewGame = (m: 'ai' | '2p', cfg: AiConfig | null, ts: TimeSettings | null = null) => {
+    setInitialSession(null);
     setMode(m);
     setAiConfig(cfg);
     setTimeSettings(ts);
     setGameKey((k) => k + 1);
     setScreen('game');
+  };
+  const startGame=async(m:'ai'|'2p',cfg:AiConfig|null,ts:TimeSettings|null=null)=>{
+    try {
+      const previous=await loadSession();
+      if(previous)setRecoveryDialog({title:'Replace Saved Game?',description:'Starting a new game replaces the automatic recovery slot. Your manually saved records remain available. Cancel to keep the saved game, then return home to resume it.',confirmLabel:'Start New Game',danger:true,confirm:()=>beginNewGame(m,cfg,ts)});
+      else beginNewGame(m,cfg,ts);
+    }catch{setRecoveryDialog({title:'Could Not Read Saved Game',description:'A new game cannot replace unreadable recovery data. The saved data has been preserved.'});}
   };
 
   const handleSelectMode = (m: GameMode) => {
@@ -82,7 +110,7 @@ function Navigator() {
   };
 
   return (
-    <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: '#000' }]}>{cinemaMenu?<NativeStatusBar barStyle="light-content" backgroundColor="#000"/>:<StatusBar />}<Animated.View style={[{ flex: 1 }, routeStyle]}><ThemeScope mode={cinemaMenu?'dark':themeMode}>
+    <SafeAreaView edges={[]} style={[styles.root, { backgroundColor: '#000' }]}>{cinemaMenu?<NativeStatusBar barStyle="light-content"/>:<StatusBar />}<Animated.View style={[{ flex: 1 }, routeStyle]}><ThemeScope mode={cinemaMenu?'dark':themeMode}>
       <View pointerEvents={screen==='menu'?'auto':'none'} accessibilityElementsHidden={screen!=='menu'} importantForAccessibility={screen==='menu'?'auto':'no-hide-descendants'} style={[StyleSheet.absoluteFill,{opacity:screen==='menu'?1:0}]}>
         <ScreenFade key="menu">
           <MainMenu
@@ -90,6 +118,8 @@ function Navigator() {
             introSeen={introSeen.current}
             onIntroSeen={()=>{introSeen.current=true;}}
             onPlay={() => setScreen('modes')}
+            onResume={savedSession||recoveryError?()=>{void resumeGame();}:undefined}
+            recoveryError={recoveryError}
             onWhatIsGo={() => setScreen('whatIsGo')}
             onHowToPlay={() => setScreen('howToPlay')}
             onStudy={() => setScreen('study')}
@@ -160,8 +190,9 @@ function Navigator() {
         </ScreenFade>
       )}
       {screen === 'game' && (
-        <GameScreen key={gameKey} mode={mode} aiConfig={aiConfig} timeSettings={timeSettings} onExit={() => setScreen('menu')} />
+        <GameScreen key={gameKey} mode={mode} aiConfig={aiConfig} timeSettings={timeSettings} initialSession={initialSession} onExit={() => setScreen('menu')} />
       )}
+      <Dialog dialog={recoveryDialog} onClose={()=>setRecoveryDialog(null)}/>
     </ThemeScope></Animated.View></SafeAreaView>
   );
 }

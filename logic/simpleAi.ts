@@ -8,8 +8,6 @@ import {
     findGroup,
     getNeighborsFixed,
     isTrueEye,
-    calculateScores,
-    guessDeadStones,
     isKoViolation
 } from './goEngine';
 
@@ -58,34 +56,36 @@ const BLACK = 1;
 const WHITE = 2;
 const EMPTY = 0;
 
-class FastState {
+export class FastState {
     size: number;
     board: Int8Array; // 0=Empty, 1=Black, 2=White
     turn: number; // 1 or 2
-    ko: number; // Index of Ko point, -1 if none
     passes: number;
     captures: { 1: number, 2: number };
     komi: number; // Komi for White
+    ruleset: GameState['ruleset'] = 'chinese';
+    private rootHistory: ReadonlySet<string> = new Set();
+    private pathHistory: {key:string; parent: FastState['pathHistory']} | null = null;
+    private previousPosition: string | null = null;
 
     // Pre-allocated neighbor lookups for performance
-    static neighborCache: Int32Array[] | null = null;
+    private static neighborCaches = new Map<number, Int32Array[]>();
+    readonly neighbors: Int32Array[];
 
     constructor(size: number) {
         this.size = size;
         this.board = new Int8Array(size * size);
         this.turn = BLACK;
-        this.ko = -1;
         this.passes = 0;
         this.captures = { 1: 0, 2: 0 };
         this.komi = 7.5;
 
-        if (!FastState.neighborCache || FastState.neighborCache.length !== size * size) {
-            FastState.initCache(size);
-        }
+        if (!FastState.neighborCaches.has(size)) FastState.initCache(size);
+        this.neighbors = FastState.neighborCaches.get(size)!;
     }
 
     static initCache(size: number) {
-        FastState.neighborCache = new Array(size * size);
+        const cache = new Array<Int32Array>(size * size);
         for (let i = 0; i < size * size; i++) {
             const x = i % size;
             const y = Math.floor(i / size);
@@ -94,18 +94,22 @@ class FastState {
             if (x < size - 1) n.push(i + 1);
             if (y > 0) n.push(i - size);
             if (y < size - 1) n.push(i + size);
-            FastState.neighborCache[i] = new Int32Array(n);
+            cache[i] = new Int32Array(n);
         }
+        FastState.neighborCaches.set(size, cache);
     }
 
     clone(): FastState {
         const s = new FastState(this.size);
         s.board.set(this.board);
         s.turn = this.turn;
-        s.ko = this.ko;
         s.passes = this.passes;
         s.captures = { 1: this.captures[1], 2: this.captures[2] };
         s.komi = this.komi;
+        s.ruleset = this.ruleset;
+        s.rootHistory = this.rootHistory;
+        s.pathHistory = this.pathHistory;
+        s.previousPosition = this.previousPosition;
         return s;
     }
 
@@ -118,7 +122,7 @@ class FastState {
     checkCaptures(moveIdx: number, color: number): number {
         const opp = this.getOpponent(color);
         let captured = 0;
-        const neighbors = FastState.neighborCache![moveIdx];
+        const neighbors = this.neighbors[moveIdx];
 
         // Check neighbors for enemy groups with 0 liberties
         for (let i = 0; i < neighbors.length; i++) {
@@ -142,7 +146,7 @@ class FastState {
         let ptr = 0;
         while (ptr < stack.length) {
             const curr = stack[ptr++];
-            const neighbors = FastState.neighborCache![curr];
+            const neighbors = this.neighbors[curr];
             for (let i = 0; i < neighbors.length; i++) {
                 const n = neighbors[i];
                 const val = this.board[n];
@@ -164,7 +168,7 @@ class FastState {
         let ptr = 0;
         while (ptr < stack.length) {
             const curr = stack[ptr++];
-            const neighbors = FastState.neighborCache![curr];
+            const neighbors = this.neighbors[curr];
             for (let i = 0; i < neighbors.length; i++) {
                 const n = neighbors[i];
                 if (this.board[n] === color) {
@@ -186,7 +190,7 @@ class FastState {
         let captures = false;
         if (!hasLib) {
              const opp = this.getOpponent(color);
-             const neighbors = FastState.neighborCache![moveIdx];
+             const neighbors = this.neighbors[moveIdx];
              for(let i=0; i<neighbors.length; i++) {
                  if(this.board[neighbors[i]] === opp && !this.hasLiberties(neighbors[i], opp)) {
                      captures = true;
@@ -201,57 +205,45 @@ class FastState {
 
     play(moveIdx: number): boolean {
         if (moveIdx === -1) { // Pass
+            this.previousPosition = this.positionKey();
             this.turn = this.getOpponent(this.turn);
             this.passes++;
-            this.ko = -1;
             return true;
         }
 
         if (this.board[moveIdx] !== EMPTY) return false;
-        if (moveIdx === this.ko) return false;
+        if (moveIdx < 0 || moveIdx >= this.board.length) return false;
 
         // Suicide check
         if (this.isSuicide(moveIdx, this.turn)) return false;
 
+        const before = this.board.slice();
+        const beforeKey = this.positionKey();
         this.board[moveIdx] = this.turn;
         const captured = this.checkCaptures(moveIdx, this.turn);
 
-        // Update captures
+        const key = this.positionKey();
+        let repeated = this.ruleset === 'japanese' ? key === this.previousPosition : this.rootHistory.has(key);
+        if (this.ruleset === 'chinese') for(let node=this.pathHistory;node&&!repeated;node=node.parent) repeated=node.key===key;
+        if (repeated) { this.board.set(before); return false; }
         this.captures[this.turn] += captured;
-
-        // Derive ko: if exactly one stone was captured and the capturing stone
-        // is now in atari (exactly 1 liberty), that's a ko — the opponent
-        // cannot immediately recapture at that liberty point.
-        this.ko = -1;
-        if (captured === 1) {
-          const libs = this.getLibertyIndices(moveIdx, this.turn);
-          if (libs.length === 1) {
-            this.ko = libs[0];
-          }
-        }
+        this.previousPosition = beforeKey;
+        this.pathHistory = {key, parent:this.pathHistory};
 
         this.turn = this.getOpponent(this.turn);
         this.passes = 0;
         return true;
     }
 
-    // Get liberty indices for the group containing idx
-    private getLibertyIndices(idx: number, color: number): number[] {
-        const visited = new Set<number>();
-        const libs = new Set<number>();
-        const stack = [idx];
-        while (stack.length > 0) {
-          const cur = stack.pop()!;
-          if (visited.has(cur) || this.board[cur] !== color) continue;
-          visited.add(cur);
-          const neighbors = FastState.neighborCache![cur];
-          for (let i = 0; i < neighbors.length; i++) {
-            const n = neighbors[i];
-            if (this.board[n] === 0) libs.add(n);
-            else if (this.board[n] === color && !visited.has(n)) stack.push(n);
-          }
-        }
-        return Array.from(libs);
+    positionKey(): string {
+        let key='';
+        for(const cell of this.board) key += cell===BLACK?'black':cell===WHITE?'white':'.';
+        return key;
+    }
+    seedHistory(history: string[]): void {
+        this.rootHistory = new Set([...history,this.positionKey()]);
+        this.pathHistory = null;
+        this.previousPosition = history.length>=2 ? history[history.length-2] : null;
     }
 }
 
@@ -301,7 +293,7 @@ class MCTSNode {
 }
 
 // Convert GameState to FastState
-const toFastState = (gs: GameState, komi: number = 7.5): FastState => {
+export const toFastState = (gs: GameState, komi: number = 7.5): FastState => {
     const size = gs.board.length;
     const fs = new FastState(size);
     for(let y=0; y<size; y++) {
@@ -313,57 +305,20 @@ const toFastState = (gs: GameState, komi: number = 7.5): FastState => {
     fs.turn = gs.turn === 'black' ? BLACK : WHITE;
     fs.passes = gs.consecutivePasses;
     fs.komi = komi;
-    // Compute ko ban from history: find the empty point where playing would
-    // recreate a banned position. Ko can only arise adjacent to the last move.
-    if (gs.lastMove && gs.history.length >= 1) {
-        const banned: Set<string> = new Set();
-        if (gs.ruleset === 'japanese') {
-            if (gs.history.length >= 2) banned.add(gs.history[gs.history.length - 2]);
-        } else {
-            gs.history.forEach(h => banned.add(h));
-        }
-        if (banned.size > 0) {
-            const lx = gs.lastMove.x, ly = gs.lastMove.y;
-            const candidates: [number, number][] = [[lx, ly]];
-            if (lx > 0) candidates.push([lx-1, ly]);
-            if (lx < size-1) candidates.push([lx+1, ly]);
-            if (ly > 0) candidates.push([lx, ly-1]);
-            if (ly < size-1) candidates.push([lx, ly+1]);
-            for (const [cx, cy] of candidates) {
-                if (gs.board[cy][cx] !== null) continue;
-                // Simulate: play, capture, convert to string
-                const test = fs.clone();
-                const idx = cy * size + cx;
-                // Temporarily bypass ko check to test the position
-                const savedKo = test.ko;
-                test.ko = -1;
-                if (!test.play(idx)) { test.ko = savedKo; continue; }
-                test.ko = savedKo;
-                let s = '';
-                for (let i = 0; i < size*size; i++) {
-                    s += test.board[i] === BLACK ? 'black' : test.board[i] === WHITE ? 'white' : '.';
-                }
-                // getBoardString uses 'black'/'white'/'.' joined — match format
-                // Actually getBoardString maps cell || '.' where cell is 'black'/'white'
-                // Our s uses same format. Compare.
-                if (banned.has(s)) {
-                    fs.ko = idx;
-                    break;
-                }
-            }
-        }
-    }
+    fs.ruleset = gs.ruleset;
+    fs.captures = {1:gs.captures.black,2:gs.captures.white};
+    fs.seedHistory(gs.history);
     return fs;
 };
 
 // Simulation with Heavy Playouts
-const simulate = (state: FastState): number => {
+function* simulate(state: FastState): Generator<void, number> {
     const maxMoves = state.size * state.size * 2;
     let moves = 0;
     const s = state.clone();
 
     while (s.passes < 2 && moves < maxMoves) {
-        const neighbors = FastState.neighborCache!;
+        const neighbors = s.neighbors;
 
         let validMove = -1;
 
@@ -385,7 +340,7 @@ const simulate = (state: FastState): number => {
 
                 // Bias: Higher chance to play if near stones (80%), lower if completely isolated (20%)
                 if (hasNeighborStone || Math.random() < 0.2) {
-                    if (!s.isSuicide(r, s.turn) && r !== s.ko) {
+                    if (s.play(r)) {
                         validMove = r;
                         break;
                     }
@@ -394,23 +349,30 @@ const simulate = (state: FastState): number => {
             attempts++;
         }
 
-        if (validMove !== -1) {
-            s.play(validMove);
-        } else {
+        if (validMove === -1) {
             // Pass if can't find move
             s.play(-1);
         }
         moves++;
+        if (moves % 8 === 0) yield;
     }
 
-    // Scoring (Chinese Area: stones + territory)
-    let b = 0, w = 0;
+    const score = evaluateSearchPosition(s);
+    return score.black > score.white ? BLACK : score.white > score.black ? WHITE : EMPTY;
+}
+
+/** Raw simulation score, without speculative dead removal or inferred Japanese seki. */
+export const evaluateSearchPosition = (s: FastState): {black:number;white:number} => {
+    // Raw playout evaluation; unsettled life and Japanese seki still require reading.
+    let b = s.ruleset==='japanese'?s.captures[BLACK]:0, w = s.ruleset==='japanese'?s.captures[WHITE]:0;
     for(let i=0; i<s.size*s.size; i++) {
-        if (s.board[i] === BLACK) b++;
-        else if (s.board[i] === WHITE) w++;
+        if (s.ruleset==='chinese') {
+            if (s.board[i] === BLACK) b++;
+            else if (s.board[i] === WHITE) w++;
+        }
     }
     // Add territory: flood-fill empty regions, assign to single bordering color
-    const ncache = FastState.neighborCache!;
+    const ncache = s.neighbors;
     const visited = new Uint8Array(s.size * s.size);
     for(let i=0; i<s.size*s.size; i++) {
         if (s.board[i] !== EMPTY || visited[i]) continue;
@@ -439,22 +401,24 @@ const simulate = (state: FastState): number => {
             else w += region.length;
         }
     }
-    w += state.komi; // Komi (from game settings)
-    return b > w ? BLACK : WHITE;
+    b += Math.max(0, -s.komi);
+    w += Math.max(0, s.komi);
+    return {black:b,white:w};
 };
 
-const runOptimizedMCTS = (gameState: GameState, komi: number = 7.5): Point | 'pass' | 'resign' => {
+function* searchMCTS(gameState: GameState, komi: number, budgetMs?: number): Generator<void, Point | 'pass' | 'resign'> {
     const size = gameState.board.length;
     const rootState = toFastState(gameState, komi);
 
     // Generate Priors using Heuristic
-    const priors = new Float32Array(size * size).fill(0.01);
+    const priors = new Float32Array(size * size);
     let priorSum = 0;
 
     const opponent = getOpponent(gameState.turn);
 
     for(let y=0; y<size; y++) {
         for(let x=0; x<size; x++) {
+            if ((y * size + x) % 8 === 0) yield;
             if (isValidMove(gameState, {x, y}, gameState.turn)) {
                 let score = 10; // Base
                 score += getInfluenceScore({x, y}, size);
@@ -470,14 +434,16 @@ const runOptimizedMCTS = (gameState: GameState, komi: number = 7.5): Point | 'pa
         }
     }
 
+    yield;
     // Normalize Priors
-    for(let i=0; i<size*size; i++) priors[i] /= priorSum;
+    if (priorSum > 0) for(let i=0; i<size*size; i++) priors[i] /= priorSum;
 
     // Root Node
     const root = new MCTSNode(rootState, null, -1, 0);
     // Expand Root immediately
     for(let y=0; y<size; y++) {
         for(let x=0; x<size; x++) {
+            if ((y * size + x) % 8 === 0) yield;
             const idx = y * size + x;
             if (priors[idx] > 0) {
                  const childState = rootState.clone();
@@ -499,10 +465,11 @@ const runOptimizedMCTS = (gameState: GameState, komi: number = 7.5): Point | 'pa
 
     const startTime = Date.now();
     // Scale think time by board size: 2.5s for 9x9, more for larger boards
-    const TIME_LIMIT = size <= 9 ? 2500 : size <= 13 ? 4000 : 6000;
+    const TIME_LIMIT = budgetMs ?? (size <= 9 ? 2500 : size <= 13 ? 4000 : 6000);
     let iterations = 0;
 
     while (Date.now() - startTime < TIME_LIMIT) {
+        yield;
         iterations++;
         let node = root;
 
@@ -516,6 +483,7 @@ const runOptimizedMCTS = (gameState: GameState, komi: number = 7.5): Point | 'pa
         // 2. Expansion
         if (node.children.length === 0 && !node.isTerminal() && node.visits > 5) {
              for(let i=0; i<size*size; i++) {
+                 if (i % 8 === 0) yield;
                  if (node.state.board[i] === EMPTY) {
                      const cs = node.state.clone();
                      if (cs.play(i)) {
@@ -533,13 +501,14 @@ const runOptimizedMCTS = (gameState: GameState, komi: number = 7.5): Point | 'pa
         }
 
         // 3. Simulation
-        const winner = simulate(node.state);
+        const winner = yield* simulate(node.state);
 
         // 4. Backprop
         while (node !== null) {
             node.visits++;
             const mover = node.state.getOpponent(node.state.turn);
-            if (winner === mover) {
+            if (winner === EMPTY) node.wins += 0.5;
+            else if (winner === mover) {
                 node.wins++;
             }
             node = node.parent;
@@ -558,17 +527,7 @@ const runOptimizedMCTS = (gameState: GameState, komi: number = 7.5): Point | 'pa
         }
     }
 
-    // Resignation: if best move win rate is very low and we're past the opening, resign
-    // instead of playing out a hopeless game
-    if (bestNode && bestNode.visits > 0) {
-        const winRate = bestNode.wins / bestNode.visits;
-        const totalMoves = gameState.history.length;
-        // Only resign after move 30 (past opening) and if win rate < 5%
-        if (totalMoves > 30 && winRate < 0.05) {
-            return 'resign';
-        }
-    }
-
+    // Do not resign from uncalibrated rollout win rates.
     if (bestNode && bestNode.move !== -1) {
         const y = Math.floor(bestNode.move / size);
         const x = bestNode.move % size;
@@ -584,7 +543,10 @@ const runOptimizedMCTS = (gameState: GameState, komi: number = 7.5): Point | 'pa
 export const getBestMove = (gameState: GameState, difficulty: AiDifficulty, komi: number = 7.5): Point | 'pass' | 'resign' => {
     // Master: Use Optimized MCTS
     if (difficulty === 'master') {
-        return runOptimizedMCTS(gameState, komi);
+        const search = searchMCTS(gameState, komi);
+        let step = search.next();
+        while (!step.done) step = search.next();
+        return step.value;
     }
 
     // --- Heuristic AI for Beginner/Intermediate/Advanced ---
@@ -614,19 +576,7 @@ export const getBestMove = (gameState: GameState, difficulty: AiDifficulty, komi
 
     if (validMoves.length === 0) return 'pass';
 
-    // Resignation: if significantly behind in late game, resign instead of playing out
-    // a hopeless position. Only for Advanced (weaker levels don't resign — they're learning).
-    if (difficulty === 'advanced' && isLateGame) {
-        const deadStones = guessDeadStones(board);
-        // Use actual game komi (not hardcoded) for accurate resignation decisions
-        const scores = calculateScores(board, gameState.captures, komi, 0, deadStones, ruleset, new Set(), true, 0, 0, true);
-        const myScore = turn === 'black' ? scores.black.total : scores.white.total;
-        const oppScore = turn === 'black' ? scores.white.total : scores.black.total;
-        // Resign if behind by 25+ points in late game
-        if (oppScore - myScore > 25) {
-            return 'resign';
-        }
-    }
+    // Keep playing: speculative life guesses cannot justify a resignation.
 
     // Tuning Perception: Accuracy of seeing tactical moves (Captures, Atari)
     let perceptionRate = 1.0;
@@ -747,3 +697,30 @@ export const getBestMove = (gameState: GameState, difficulty: AiDifficulty, komi
     if (bestMoves.length > 0) return bestMoves[Math.floor(Math.random() * bestMoves.length)];
     return 'pass';
 };
+
+
+/** Cooperative search for the UI. Check cancellation before every bounded work unit. */
+export async function getBestMoveAsync(
+    gameState: GameState, difficulty: AiDifficulty, komi = 7.5,
+    options: {cancelled?: () => boolean; budgetMs?: number} = {},
+): Promise<Point | 'pass' | 'resign'> {
+    const check = () => { if (options.cancelled?.()) { const error = new Error('AI search cancelled'); error.name = 'AbortError'; throw error; } };
+    check();
+    // Give React a chance to render the thinking state even for heuristic levels.
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
+    check();
+    if (difficulty !== 'master') return getBestMove(gameState, difficulty, komi);
+    const search = searchMCTS(gameState, komi, options.budgetMs);
+    try {
+        let sliceStart = Date.now();
+        while (true) {
+            check();
+            const step = search.next();
+            if (step.done) return step.value;
+            if (Date.now() - sliceStart >= 8) {
+                await new Promise<void>(resolve => setTimeout(resolve, 0));
+                sliceStart = Date.now();
+            }
+        }
+    } finally { search.return('pass'); }
+}

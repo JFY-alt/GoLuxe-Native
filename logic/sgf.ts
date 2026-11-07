@@ -1,5 +1,5 @@
 import { GameState, Intersection, Player, Point, RuleSet } from '../types';
-import { checkCaptures, createEmptyBoard, getBoardString, isSelfCapture, isKoViolation } from './goEngine';
+import { checkCaptures, createEmptyBoard, getBoardString, isSelfCapture, isKoViolation, findGroup, getLiberties } from './goEngine';
 export interface RecordNode {
   properties: Record<string, string[]>;
   parent: RecordNode | null;
@@ -17,7 +17,7 @@ export function playMove(state: GameState, point: Point, fixedStars?: Point[]): 
   const { board, turn } = state;
   if (!board[point.y] || point.x < 0 || point.x >= board.length) throw new Error('Outside the board');
   if (board[point.y][point.x]) throw new Error('That intersection is occupied');
-  if (state.handicapPlacementsLeft && fixedStars && !fixedStars.some(p => p.x === point.x && p.y === point.y)) throw new Error('Fixed handicap must be on star points');
+  if (state.handicapPlacementsLeft && fixedStars && !fixedStars.some(p => p.x === point.x && p.y === point.y)) throw new Error('Fixed handicap must use the selected layout points');
   if (!state.handicapPlacementsLeft && isSelfCapture(board, point, turn)) throw new Error('Suicide move not allowed');
   const placed = board.map(row => [...row]); placed[point.y][point.x] = turn;
   const captured = state.handicapPlacementsLeft ? { newBoard: placed, captureCount: 0 } : checkCaptures(placed, point, turn);
@@ -43,7 +43,27 @@ export function appendMove(node: RecordNode, previous: GameState, next: GameStat
   const child = { parent: node, children: [], position: next, moveNumber: node.moveNumber + 1, properties: { [key]: [value] } };
   node.children.push(child); return child;
 }
-export function parseSgf(source: string): { root: RecordNode; size: number; ruleset: RuleSet; komi: number } {
+/** Rewinding setup changes the variation tree's base; old continuations are no longer valid. */
+export function rewindHandicapSetup(node:RecordNode,position:GameState):void {
+ if(node.parent||!position.handicapPlacementsLeft)throw new Error('Only incomplete root handicap setup can be rewound');
+ const stones:string[]=[];position.board.forEach((row,y)=>row.forEach((color,x)=>{if(color==='black')stones.push(encodePoint({x,y}));}));
+ node.properties.AB=stones;node.properties.HA=[String(stones.length)];node.properties.PL=['B'];
+ node.position=position;node.children=[];
+}
+/** FF4 record playback is distinct from legal live play: overwrite, capture opponents, then self-capture. */
+export function replaySgfMove(state:GameState,point:Point):{position:GameState;unusual:boolean} {
+ if(!state.board[point.y]||point.x<0||point.x>=state.board.length)throw new Error('SGF move is outside the board');
+ const color=state.turn,opponent=other(color),placed=state.board.map(row=>[...row]);
+ const occupied=placed[point.y][point.x]!==null;placed[point.y][point.x]=color;
+ const captured=checkCaptures(placed,point,color),own=findGroup(captured.newBoard,point);
+ let suicide=0;if(own&&getLiberties(captured.newBoard,own.group).size===0){suicide=own.group.length;for(const p of own.group)captured.newBoard[p.y][p.x]=null;}
+ const hash=getBoardString(captured.newBoard);
+ return {unusual:occupied||suicide>0||isKoViolation(hash,state.history,state.ruleset),position:{...state,board:captured.newBoard,
+  captures:{...state.captures,[color]:state.captures[color]+captured.captureCount,[opponent]:state.captures[opponent]+suicide},
+  turn:opponent,lastMove:point,history:[...state.history,hash],handicapPlacementsLeft:0,consecutivePasses:0,phase:'play'}};
+}
+export function parseSgf(source: string): { root: RecordNode; size: number; ruleset: RuleSet; komi: number; playbackWarnings:number } {
+  let playbackWarnings=0;
   if (source.length > 2 * 1024 * 1024) throw new Error('SGF files must be under 2 MB');
   let i = 0, nodes = 0;
   type Raw = { properties: Record<string, string[]>; children: Raw[] };
@@ -101,14 +121,15 @@ export function parseSgf(source: string): { root: RecordNode; size: number; rule
     if (moveColor) {
       position = { ...position, turn: moveColor };
       const value = r.properties[moveColor === 'black' ? 'B' : 'W'][0];
-      position = !value || value === 'tt' ? passMove(position) : playMove(position,decode(value));
+      if(!value||value==='tt')position=passMove(position);
+      else {const replay=replaySgfMove(position,decode(value));position=replay.position;if(replay.unusual)playbackWarnings++;}
     }
     const node: RecordNode = { properties: r.properties, children: [], parent, position, moveNumber: (parent?.moveNumber || 0) + (moveColor ? 1 : 0) };
     return node;
   };
   const root = build(raw,null), pending: { r: Raw; n: RecordNode }[] = [{r:raw,n:root}];
   while(pending.length) { const {r,n} = pending.pop()!; for(const child of r.children) { const c=build(child,n); n.children.push(c); pending.push({r:child,n:c}); } }
-  return { root, size, ruleset, komi };
+  return { root, size, ruleset, komi, playbackWarnings };
 }
 export function serializeSgf(root: RecordNode): string {
   const esc = (s: string) => s.replace(/\\/g,'\\\\').replace(/\]/g,'\\]');

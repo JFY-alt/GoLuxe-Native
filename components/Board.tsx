@@ -1,3 +1,4 @@
+import {coordinateLabel} from '../logic/recordPresentation';
 import Svg, {Line} from 'react-native-svg';
 import {boardPresentation,displayHoshiPoints,atariConnections} from '../logic/boardPresentation';
 import React, { useEffect, useMemo } from 'react';
@@ -25,6 +26,8 @@ import {
 } from '../logic/goEngine';
 
 interface BoardProps {
+  showCoordinates?: boolean;
+  moveNumbers?: Record<string,number>;
   board: Intersection[][];
   previewPoint?: Point | null;
   sekiPoints?: Set<string>;
@@ -131,6 +134,8 @@ const TargetPing: React.FC = () => {
  */
 const Board: React.FC<BoardProps> = ({
   board,
+  showCoordinates=false,
+  moveNumbers,
   previewPoint = null,
   sekiPoints = new Set(),
   isScoringMode = false,
@@ -166,7 +171,8 @@ const Board: React.FC<BoardProps> = ({
   }[theme];
 
   // Web: margins shrink as the board grows (8% / 6% / 4%).
-  const padFrac = size === 9 ? 0.08 : size === 13 ? 0.06 : 0.04;
+  const basePad = size === 9 ? 0.08 : size === 13 ? 0.06 : 0.04;
+  const padFrac = showCoordinates ? Math.max(basePad,.075) : basePad;
   const pad = boardPx * padFrac;
   const usable = boardPx - pad * 2;
   const step = usable / (size - 1);
@@ -213,7 +219,7 @@ const Board: React.FC<BoardProps> = ({
           <Pressable
             key={`t${key}`}
             accessibilityRole="button"
-            accessibilityLabel={`Intersection ${x + 1},${y + 1}, ${stone || 'empty'}`}
+            accessibilityLabel={`Intersection ${x + 1},${y + 1}, ${stone || 'empty'}${showCoordinates?', '+coordinateLabel(x,y,size):''}${moveNumbers?.[key]!==undefined?', move '+moveNumbers[key]:''}`}
             accessibilityState={{ disabled: !interactive }}
             testID={`intersection-${x}-${y}`}
             disabled={!interactive}
@@ -262,7 +268,8 @@ const Board: React.FC<BoardProps> = ({
                   <Svg width={stoneD*.6} height={stoneD*.6} viewBox="0 0 24 24" stroke="rgba(239,68,68,.80)" strokeWidth={3} strokeLinecap="round"><Line x1={18} y1={6} x2={6} y2={18}/><Line x1={6} y1={6} x2={18} y2={18}/></Svg>
                 </View>
               )}
-              {!isDead && isLast && !isScoringMode && (
+              {moveNumbers?.[key]!==undefined&&!isDead&&<View pointerEvents="none" style={[StyleSheet.absoluteFill,{alignItems:'center',justifyContent:'center'}]}><Text style={{color:isLast?(stone==='black'?'#fbbf24':'#92400e'):(stone==='black'?'#ffffff':'#111111'),fontSize:stoneD/(String(moveNumbers[key]).length>2?3:2.4),fontWeight:'600'}}>{moveNumbers[key]}</Text></View>}
+              {!isDead && isLast && moveNumbers?.[key]===undefined && !isScoringMode && (
                 <View
                   style={[
                     styles.lastMove,
@@ -496,6 +503,13 @@ const Board: React.FC<BoardProps> = ({
       />
       <View pointerEvents="none" style={StyleSheet.absoluteFill}><Image source={require('../assets/dark-wood.png')} resizeMode="repeat" style={[StyleSheet.absoluteFill, { opacity: themeMode==='light'?Math.min({espresso:.04,classic:.1,midnight:.02,washi:.06,maple:.07,riverstone:.04}[theme],.05):{espresso:.04,classic:.1,midnight:.02,washi:.06,maple:.07,riverstone:.04}[theme] }]} /></View>
       {renderGrid()}
+      {showCoordinates&&Array.from({length:size},(_,i)=>{
+        const fontSize=Math.min(10,pad*.5),column=coordinateLabel(i,0,size).replace(/\d+/g,''),row=String(size-i);
+        return <React.Fragment key={`coordinate-${i}`}>
+          {[0,boardPx-pad].map(top=><Text key={`col-${top}`} pointerEvents="none" style={{position:'absolute',left:pointXY(i)-pad/2,top,width:pad,height:pad,textAlign:'center',lineHeight:pad,fontSize,color:themeColors.line,opacity:.8}}>{column}</Text>)}
+          {[0,boardPx-pad].map(left=><Text key={`row-${left}`} pointerEvents="none" style={{position:'absolute',left,top:pointXY(i)-pad/2,width:pad,height:pad,textAlign:'center',lineHeight:pad,fontSize,color:themeColors.line,opacity:.8}}>{row}</Text>)}
+        </React.Fragment>;
+      })}
       {hoshi.map((p) => (
         <View
           key={`h${p.x},${p.y}`}
